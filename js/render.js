@@ -246,12 +246,23 @@ _drawUnits: function() {
 
         // Иконка юнита
         ctx.globalAlpha = u.trainingDaysLeft > 0 ? 0.4 : 1;
-        
+
         var iconImg = AssetManager.get("icons", u.type);
-        
+
+        // Тёмная подложка + кольцо цвета фракции, иначе иконка
+        // теряется на фоне территории того же цвета.
+        var ownerColor = State.getFactionInfo(u.owner).color || "#4ade80";
+        ctx.beginPath();
+        ctx.arc(u.visualX, u.visualY, S * 0.46, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(4,10,4,0.72)";
+        ctx.fill();
+        ctx.lineWidth   = 2;
+        ctx.strokeStyle = ownerColor;
+        ctx.stroke();
+
         if (iconImg && u.trainingDaysLeft <= 0) {
             // Рисуем PNG-изображение
-            var iconSize = S * 0.8;
+            var iconSize = S * 0.72;
             ctx.drawImage(
                 iconImg,
                 u.visualX - iconSize / 2,

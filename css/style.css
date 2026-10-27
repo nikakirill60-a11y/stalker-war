@@ -576,11 +576,48 @@ img[src] {
 }
 
 /* ═══════════════ АДАПТИВНОСТЬ ══════════════════ */
+@media (max-width: 1200px) {
+    #hoi-window   { width: min(560px, calc(100vw - 16px)); }
+    #intel-sidebar{ left: auto; right: 8px; width: min(270px, calc(100vw - 16px)); }
+    .faction-select-panel { width: min(520px, calc(100vw - 24px)); }
+}
+
+@media (max-width: 900px) {
+    #top-bar {
+        height: auto;
+        min-height: 44px;
+        flex-wrap: wrap;
+        padding: 6px 10px;
+        gap: 8px 12px;
+    }
+    #top-bar > div { flex-wrap: wrap; gap: 6px 10px; }
+    #top-bar > div:last-child { margin-left: 0; }
+    .top-stat { padding: 2px 8px; font-size: 10px; }
+    .faction-badge { font-size: 11px; }
+    #game-tabs { flex-wrap: wrap; right: 8px; gap: 1px; }
+    .tab-btn { padding: 4px 8px; font-size: 8px; }
+    #hoi-window { top: 92px; left: 8px; right: 8px; width: auto; }
+    #intel-sidebar { top: 92px; left: 8px; right: 8px; width: auto; }
+    .window-content { min-height: 260px; max-height: 60vh; }
+    #notification-box { width: min(320px, calc(100vw - 40px)); }
+}
+
 @media (max-width: 600px) {
     .leader-portrait {
         width: 132px !important;  /* 80% от 165 */
         height: 86px !important;  /* 80% от 108 */
     }
+    .menu-panel {
+        width: calc(100vw - 24px);
+        padding: 2rem 1.25rem;
+    }
+    .menu-title { font-size: 2rem; }
+    .menu-logo { width: 72px; height: 72px; }
+    #ui-panel { width: 260px; }
+    #ui-wrapper.hidden-panel { transform: translateX(260px); }
+    .faction-list { padding: 8px; }
+    .faction-item { padding: 8px; gap: 8px; }
+    .leader-portrait { max-width: 100%; }
 }
 
 /* ЦВЕТА ФРАКЦИЙ */
