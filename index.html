@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S.T.A.L.K.E.R. — Tactical Zone Control</title>
+    <!-- Tailwind для быстрых правок, основной стиль в style.css -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body oncontextmenu="return false;">
+
+<!-- ══════════════ ГЛАВНОЕ МЕНЮ ══════════════════ -->
+<div id="main-menu">
+    <div class="menu-panel" id="menu-home">
+        <div class="menu-title">S.T.A.L.K.E.R.</div>
+        <div class="menu-subtitle">Tactical Zone Control System v1.2</div>
+
+        <button class="stalker-btn primary" onclick="UI.loadBetaMap()">
+            НАЧАТЬ ИГРУ (БЕТА-КАРТА)
+        </button>
+        <button class="stalker-btn" onclick="UI.goToIntelCenter()">
+            ЗАГРУЗИТЬ СВОЮ КАРТУ
+        </button>
+        <button class="stalker-btn danger" onclick="location.reload()">
+            ВЫХОД
+        </button>
+
+        <div class="menu-version">
+            ЗОНА ОТЧУЖДЕНИЯ · ЧЕРНОБЫЛЬ · 2006<br>
+            <span style="color:#2a4a2a">УДАЧНОЙ ОХОТЫ, СТАЛКЕР</span>
+        </div>
+    </div>
+
+    <!-- Загрузка карты -->
+    <div class="menu-panel hidden" id="menu-intel">
+        <div class="menu-title" style="font-size:1.4rem;margin-bottom:0.5rem">ЗАГРУЗКА ДАННЫХ</div>
+        <div class="menu-subtitle">ИМПОРТ КАРТЫ ЗОНЫ</div>
+        <div style="margin-bottom:12px">
+            <button class="stalker-btn" onclick="document.getElementById('file-input').click()">
+                ВЫБРАТЬ ФАЙЛ КАРТЫ (.json)
+            </button>
+            <input type="file" id="file-input" style="display:none" accept=".json"
+                   onchange="UI.handleFileSelect(this)">
+            <textarea id="import-area"
+                style="width:100%;height:120px;background:#0a120a;border:1px solid #2a3a2a;
+                       color:#4ade80;font-family:'Share Tech Mono',monospace;
+                       font-size:10px;padding:8px;resize:none;margin-top:8px"
+                placeholder='Вставьте JSON или выберите файл...'></textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="stalker-btn" style="flex:1" onclick="UI.processIntel()">ЗАГРУЗИТЬ</button>
+            <button class="stalker-btn danger" onclick="location.reload()">ОТМЕНА</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════ ВЫБОР ФРАКЦИИ ═════════════════ -->
+<div id="play-menu">
+    <div class="faction-select-panel">
+        <div class="faction-select-header">
+            ◈ ВЫБЕРИТЕ ГРУППИРОВКУ
+        </div>
+        <div class="faction-list" id="play-faction-list">
+            <!-- Список генерируется в ui.js -->
+        </div>
+        <div style="padding:10px;border-top:1px solid #1a2a1a">
+            <button class="game-btn red w-full" style="width:100%"
+                    onclick="UI.closePlayMenu()">НАЗАД</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════ УВЕДОМЛЕНИЯ ═══════════════════ -->
+<div id="notification-box"></div>
+
+<!-- ══════════════ ИГРОВОЙ ИНТЕРФЕЙС ═════════════ -->
+<div id="game-container" style="display:none;position:relative;width:100vw;height:100vh;">
+
+    <!-- Верхняя панель ресурсов -->
+    <div id="top-bar">
+        <div style="display:flex;gap:12px;align-items:center">
+            <span id="top-faction-name" class="faction-badge">---</span>
+            
+            <div class="top-stat" title="Снаряжение для найма и боёв">
+                <span class="label">📦 Снаряж.</span>
+                <span class="val" id="val-equipment">0</span>
+            </div>
+            
+            <div class="top-stat" title="Количество подконтрольных секторов">
+                <span class="label">🗺️ Сектора</span>
+                <span class="val" id="val-stalkers">0</span>
+            </div>
+            
+            <div class="top-stat" title="Количество схронов (база ресурсов)">
+                <span class="label">🏠 Схроны</span>
+                <span class="val" id="val-caches">0</span>
+            </div>
+
+            <div class="top-stat" title="Валюта (RU)" style="border-color: var(--stalker-amber)">
+                <span class="label" style="color:var(--stalker-amber)">💰 Рубли</span>
+                <span class="val" id="val-rubles" style="color:var(--stalker-amber)">0</span>
+                <span style="font-size:8px;color:var(--stalker-amber);margin-left:2px">RU</span>
+            </div>
+
+            <button id="btn-map-normal" class="mode-status-btn hidden"
+                    onclick="UI.resetMapMode()">↩ ОБЫЧНАЯ КАРТА</button>
+        </div>
+
+        <div style="margin-left:auto;display:flex;gap:12px;align-items:center;">
+            <!-- Индикаторы активных процессов -->
+            <div class="flex gap-3 mr-4">
+                <span id="research-indicator" class="hidden text-[10px] text-blue-400 animate-pulse">◉ ИЗУЧЕНИЕ...</span>
+                <span id="focus-indicator"    class="hidden text-[10px] text-green-400 animate-pulse">◈ ФОКУС...</span>
+                <span id="build-indicator"    class="hidden text-[10px] text-yellow-500 animate-pulse">◎ СТРОЙКА...</span>
+            </div>
+
+            <!-- Подсказки режимов -->
+            <span id="recruit-hint" class="hidden text-[10px] text-amber-500 animate-bounce">↓ ВЫБЕРИТЕ СЕКТОР ДЛЯ ПРИЗЫВА</span>
+            <span id="order-hint"   class="hidden text-[10px] text-green-400 animate-bounce">→ УКАЖИТЕ ЦЕЛЬ ДВИЖЕНИЯ</span>
+            <span id="build-hint"   class="hidden text-[10px] text-blue-400 animate-bounce">↓ ВЫБЕРИТЕ МЕСТО ДЛЯ ОБЪЕКТА</span>
+
+            <!-- Время -->
+            <div class="time-controls">
+                <button id="btn-pause"   class="speed-btn active">⏸</button>
+                <button id="btn-speed-1" class="speed-btn">1x</button>
+                <button id="btn-speed-3" class="speed-btn">3x</button>
+                <button id="btn-speed-5" class="speed-btn">5x</button>
+            </div>
+            <span id="game-date"
+                  style="background:rgba(0,0,0,0.6);padding:4px 12px;border:1px solid #2a3a2a;
+                         font-size:11px;min-width:130px;text-align:center;color:#c8c8a0">
+                1 АПР 2006
+            </span>
+        </div>
+    </div>
+
+    <!-- Вкладки управления -->
+    <div class="tab-bar hidden" id="game-tabs">
+        <button class="tab-btn" onclick="UI.openWindow('politics')">ФРАКЦИЯ</button>
+        <button class="tab-btn" onclick="UI.openWindow('research')">ТЕХНОЛОГИИ</button>
+        <button class="tab-btn" onclick="UI.openWindow('build')">СТРОИТЕЛЬСТВО</button>
+        <button class="tab-btn" onclick="UI.openWindow('diplomacy')">ДИПЛОМАТИЯ</button>
+        <button class="tab-btn" onclick="UI.openWindow('army')">ОТРЯДЫ</button>
+        <button class="tab-btn" onclick="UI.openWindow('trader')">ТОРГОВЦЫ</button>
+        <button class="tab-btn" onclick="UI.openWindow('mods')" 
+                style="color:var(--stalker-amber); border-color: rgba(200,168,75,0.3)">
+            МОДЫ
+        </button>
+        <button class="tab-btn" onclick="UI.openWindow('inventory')" 
+                style="color:var(--stalker-amber); border-color: rgba(200,168,75,0.3)">
+            ИНВЕНТАРЬ
+        </button>
+    </div>
+
+    <!-- Главное всплывающее окно -->
+    <div id="hoi-window">
+        <div class="window-header">
+            <span id="window-title">---</span>
+            <button onclick="UI.closeWindow()"
+                    style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px">✕</button>
+        </div>
+        <div id="window-body" class="window-content">
+            <!-- Контент подгружается динамически из ui.js -->
+        </div>
+    </div>
+
+    <!-- Игровой мир (Canvas) -->
+    <canvas id="grid-canvas"></canvas>
+
+    <!-- Сайдбар информации о секторе -->
+    <div id="intel-sidebar">
+        <h2 id="intel-name">---</h2>
+        <div style="border-top:1px solid #2a3a2a;padding-top:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+                <span style="color:#4a6a4a">Лидер:</span>
+                <span id="intel-leader">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+                <span style="color:#4a6a4a">Идеология:</span>
+                <span id="intel-ideology">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+                <span style="color:#4a6a4a">Людей в секторе:</span>
+                <span id="cell-stalkers" style="color:#4ade80">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+                <span style="color:#4a6a4a">Фон радиации:</span>
+                <span id="cell-rad" style="color:#ef4444">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+                <span style="color:#4a6a4a">Аномалии:</span>
+                <span id="cell-anomaly" style="color:#a855f7">-</span>
+            </div>
+            
+            <!-- Блок дипломатии (только для других фракций) -->
+            <div id="diplo-view-info"
+                 style="margin-top:10px;padding:10px;background:rgba(0,0,0,0.4);border:1px solid #2a3a2a">
+                <div style="font-size:9px;letter-spacing:0.15em;border-bottom:1px solid #2a3a2a;padding-bottom:6px;margin-bottom:8px;color:#6a8a6a">СВЯЗЬ ПО КПК</div>
+                <div id="diplo-status-text" style="font-size:9px;color:#c8c8a0;margin-bottom:8px">Нейтральные</div>
+                <div id="diplo-actions" style="display:flex;flex-direction:column;gap:4px">
+                    <!-- Кнопки генерируются в ui.js -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Панель управления редактором (справа) -->
+    <div id="ui-wrapper">
+        <div id="toggle-panel-btn">◀</div>
+        <div id="ui-panel">
+            <button id="btn-start-play" class="stalker-btn primary"
+                    style="font-size:12px;padding:14px;margin-bottom:20px">
+                ▶ ВСТУПИТЬ В ГРУППИРОВКУ
+            </button>
+            
+            <div id="editor-controls">
+                <div style="font-size:9px;color:#6a8a6a;letter-spacing:0.2em;margin-bottom:8px;text-align:center">РЕЖИМ ПРАВКИ КАРТЫ</div>
+                <div style="display:flex;gap:6px;margin-bottom:12px">
+                    <button id="btn-draw"  class="game-btn active" style="flex:1;font-size:9px">ЗАХВАТ</button>
+                    <button id="btn-erase" class="game-btn"        style="flex:1;font-size:9px">ОЧИСТКА</button>
+                </div>
+                
+                <div style="font-size:9px;color:#6a8a6a;letter-spacing:0.2em;margin-bottom:6px">ФРАКЦИИ</div>
+                <div id="faction-list" style="overflow-y:auto;max-height:45vh;border:1px solid #1a2a1a;padding:4px">
+                    <!-- Генерируется в ui.js -->
+                </div>
+                
+                <button id="btn-download" class="game-btn amber"
+                        style="width:100%;margin-top:16px;padding:10px;font-size:10px">💾 ЭКСПОРТ ДАННЫХ ЗОНЫ</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════ СКРИПТЫ ════════════════════════ -->
+
+<!-- 1. Данные и настройки -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="js/config.js"></script>
+<!-- 2. Хранилище состояния -->
+<script src="js/items.js"></script>
+<!-- 3. Система модов -->
+<script src="js/mods.js"></script>
+<script src="js/mod-editor.js"></script>
+<!-- 4. Хранилище состояния -->
+<script src="js/state.js"></script>
+<!-- 5. Визуальные ресурсы (портреты, иконки) -->
+<script src="js/assets.js"></script>
+<!-- 6. Движок и логика -->
+<script src="js/engine.js"></script>
+<!-- 7. Отрисовка Canvas -->
+<script src="js/render.js"></script>
+<!-- 8. Интерфейс пользователя -->
+<script src="js/ui/ui-core.js"></script>
+<script src="js/ui/ui-politics.js"></script>
+<script src="js/ui/ui-research.js"></script>
+<script src="js/ui/ui-military.js"></script>
+<script src="js/ui/ui-economy.js"></script>
+<script src="js/ui/ui-diplomacy.js"></script>
+<script src="js/ui/ui-mods.js"></script>
+
+<script>
+    /**
+     * ТОЧКА ВХОДА
+     * Порядок инициализации критически важен
+     */
+    
+    // А) Инициализируем пустое состояние
+    State.init();
+
+    // Б) Создаём экран загрузки для Assets
+    var loadingScreen = document.createElement("div");
+    loadingScreen.style.cssText = 
+        "position:fixed;inset:0;background:#050805;z-index:9999;" +
+        "display:flex;flex-direction:column;align-items:center;justify-content:center;color:#4ade80;";
+    loadingScreen.innerHTML = 
+        '<div style="font-size:30px;letter-spacing:0.5em;margin-bottom:20px;animation:flicker 2s infinite">S.T.A.L.K.E.R.</div>' +
+        '<div id="load-status" style="font-size:10px;margin-bottom:10px;color:#6a8a6a">ПОДКЛЮЧЕНИЕ К СЕТИ КПК...</div>' +
+        '<div style="width:250px;height:2px;background:#1a2a1a;position:relative">' +
+            '<div id="load-bar" style="position:absolute;left:0;top:0;height:100%;background:#4ade80;width:0%;transition:width 0.2s"></div>' +
+        '</div>' +
+        '<div id="load-pct" style="margin-top:10px;font-size:12px">0%</div>';
+    document.body.appendChild(loadingScreen);
+
+    // В) Запускаем предзагрузку изображений
+    AssetManager.init(
+        // Когда всё загружено:
+        function() {
+            console.log("Assets Ready");
+            
+            // ИНИЦИАЛИЗИРУЕМ СИСТЕМУ МОДОВ
+            ModManager.init();
+            
+            setTimeout(function() {
+                loadingScreen.style.opacity = "0";
+                loadingScreen.style.transition = "opacity 0.5s";
+                setTimeout(function() { loadingScreen.remove(); }, 500);
+            }, 800);
+        },
+        // Прогресс загрузки:
+        function(loaded, total) {
+            var p = Math.floor((loaded / total) * 100);
+            document.getElementById("load-bar").style.width = p + "%";
+            document.getElementById("load-pct").innerText = p + "%";
+            if(p > 90) document.getElementById("load-status").innerText = "СИНХРОНИЗАЦИЯ ДАННЫХ ЗОНЫ...";
+        }
+    );
+
+    // Г) Инициализируем системы взаимодействия
+    Renderer.init(document.getElementById("grid-canvas"));
+    UI.init();
+    Engine.init();
+
+    // Принудительный ресайз при старте
+    window.dispatchEvent(new Event('resize'));
+</script>
+
+</body>
+</html>
