@@ -25,10 +25,12 @@ var Engine = {
         requestAnimationFrame(function() { self._loop(); });
     },
 
+    // Сколько игрового времени прибавляется за один кадр.
+    // 1x ≈ 1 сутки за 2 секунды, 3x ≈ 0.7 с, 5x ≈ 0.4 с.
     _advanceTime: function() {
         if (State.gameSpeed === 0) return;
-        var msMap = { 1: 3600000, 3: 21600000, 5: 72000000 };
-        var ms    = msMap[State.gameSpeed] || 3600000;
+        var msMap = { 1: 720000, 3: 2160000, 5: 3600000 };
+        var ms    = msMap[State.gameSpeed] || 720000;
         var prev  = new Date(State.gameDate);
         State.gameDate = new Date(State.gameDate.getTime() + ms);
 
@@ -74,10 +76,15 @@ var Engine = {
     _tickFocus: function() {
         var f = State.activeFocus;
         if (!f) return;
-        var bonuses = State.getLeaderBonuses();
-        f.daysLeft -= (bonuses.focusSpeed || 1);
+        // Длительность уже сокращена бонусом лидера в момент запуска фокуса
+        f.daysLeft -= 1;
         if (f.daysLeft <= 0) {
-            f.effect(State);
+            try {
+                f.effect(State);
+            } catch (err) {
+                console.error("Ошибка эффекта фокуса " + f.id + ":", err);
+                State.createAlert("ФОКУС ПРОВАЛЕН: " + (f.name || f.id), 5, "war");
+            }
             State.completedFocuses.add(f.id);
             State.activeFocus = null;
             var el = document.getElementById("focus-indicator");
@@ -88,8 +95,8 @@ var Engine = {
     _tickResearch: function() {
         var r = State.activeResearch;
         if (!r) return;
-        var bonuses = State.getLeaderBonuses();
-        r.daysLeft -= (1 / (bonuses.researchSpeed || 1));
+        // Длительность уже сокращена бонусом в startResearch
+        r.daysLeft -= 1;
         if (r.daysLeft <= 0) {
             State.tech[r.type] = r.level;
             State.createAlert("ИССЛЕДОВАНИЕ ЗАВЕРШЕНО", 10, "info");
@@ -109,8 +116,7 @@ var Engine = {
     _tickBuilding: function() {
         if (!State.buildQueue.length) return;
         var p = State.buildQueue[0];
-        var bonuses = State.getLeaderBonuses();
-        p.daysLeft -= (1 / (bonuses.constructionSpeed || 1));
+        p.daysLeft -= 1;
         if (p.daysLeft <= 0) {
             State.getCellData(p.pos).buildings.push(p.type);
             State.createAlert("ПОСТРОЕНО: " + BUILDING_DEFS[p.type].name, 5, "info");
@@ -154,7 +160,12 @@ var Engine = {
 
             var next = u.path[0];
             var nextOwner = State.grid[next];
-            if (!nextOwner) { u.path = []; return; }
+            if (!nextOwner) {
+                // Пустая клетка: идём по ней, но не присваиваем её фракции
+                u.path.shift();
+                u.pos = next;
+                return;
+            }
 
             var enemy = null;
             State.units.forEach(function(x) { if (x.pos === next && State.isAtWar(u.owner, x.owner)) enemy = x; });
@@ -178,11 +189,17 @@ var Engine = {
         var self = this;
         State.battles = State.battles.filter(function(b) {
             if (b.attacker.hp <= 0 || b.defender.hp <= 0) {
+                var fallen = [];
                 if (b.defender.hp <= 0) {
+                    // Защитник пал — атакующий занимает его клетку
                     State.grid[b.defender.pos] = b.attacker.owner;
                     b.attacker.pos = b.defender.pos;
-                    State.units = State.units.filter(function(u) { return u.id !== b.defender.id; });
+                    fallen.push(b.defender.id);
                     self._checkCapitulation(b.defender.owner, b.attacker.owner);
+                }
+                if (b.attacker.hp <= 0) fallen.push(b.attacker.id);
+                if (fallen.length) {
+                    State.units = State.units.filter(function(u) { return fallen.indexOf(u.id) === -1; });
                 }
                 return false;
             }
@@ -289,9 +306,6 @@ var Engine = {
         var atWar = State.isAtWar(initiator, target);
         var areAllied = State.areAllies(initiator, target);
         
-        // Отладочный вывод
-        console.log("Дипломатия: " + initiator + " рассматривает " + target + " (война:" + atWar + ", союз:" + areAllied + ")");
-        
         // Анализ силы фракций
         var initiatorStats = State.calcFactionStats(initiator);
         var targetStats = State.calcFactionStats(target);
@@ -347,8 +361,6 @@ var Engine = {
                 warChance = 0.9; // 90% шанс что Бандиты или Монолит объявят войну игроку
             }
             
-            console.log("Шанс войны между " + initiator + " и " + target + ": " + (warChance * 100) + "%");
-            
             if (Math.random() < warChance) {
                 State.wars.push({ a: initiator, b: target });
                 var initiatorName = State.getFactionInfo(initiator).name;
@@ -358,8 +370,6 @@ var Engine = {
                     "ВОЙНА: " + initiatorName.toUpperCase() + " ОБЪЯВЛЯЕТ ВОЙНУ " + targetName.toUpperCase(),
                     15, "war"
                 );
-                
-                console.log("ВОЙНА ОБЪЯВЛЕНА: " + initiator + " vs " + target);
                 return; // Выходим, чтобы не делать союз в этот же тик
             }
         }
@@ -397,8 +407,6 @@ var Engine = {
                 allianceChance = 0;
             }
             
-            console.log("Шанс союза между " + initiator + " и " + target + ": " + (allianceChance * 100) + "%");
-            
             if (Math.random() < allianceChance) {
                 State.alliances.push(new Set([initiator, target]));
                 var initiatorName = State.getFactionInfo(initiator).name;
@@ -408,8 +416,7 @@ var Engine = {
                     "СОЮЗ: " + initiatorName.toUpperCase() + " И " + targetName.toUpperCase() + " ЗАКЛЮЧИЛИ АЛЬЯНС",
                     12, "diplo"
                 );
-                
-                console.log("СОЮЗ ЗАКЛЮЧЁН: " + initiator + " + " + target);
+
             }
         }
         
@@ -425,8 +432,6 @@ var Engine = {
                         "РАЗРЫВ: " + initiatorName.toUpperCase() + " РАЗОРВАЛИ СОЮЗ С " + targetName.toUpperCase(),
                         10, "diplo"
                     );
-                    
-                    console.log("СОЮЗ РАЗОРВАН: " + initiator + " - " + target);
                     return false;
                 }
                 return true;
@@ -473,7 +478,13 @@ var Engine = {
         var cost = BUILDING_DEFS[State.buildModeType].costEquipment;
         if (State.resources.equipment < cost) { State.createAlert("НЕТ СНАРЯЖЕНИЯ", 3, "war"); return; }
         State.resources.equipment -= cost;
-        State.buildQueue.push({ pos: pk, type: State.buildModeType, daysLeft: CONSTRUCTION_DAYS, owner: State.myFactionId });
+        var speed     = State.getLeaderBonuses().constructionSpeed || 1;
+        var totalDays = CONSTRUCTION_DAYS * speed;
+        State.buildQueue.push({
+            pos: pk, type: State.buildModeType,
+            daysLeft: totalDays, totalDays: totalDays,
+            owner: State.myFactionId
+        });
         State.buildModeType = null;
         document.getElementById("build-hint").classList.add("hidden");
         UI.updateTopBar();

@@ -53,17 +53,58 @@ var UI = {
 
     processIntel: function() {
         var raw = document.getElementById("import-area").value.trim();
-        try {
-            State.grid = raw ? JSON.parse(raw) : generateBetaMap();
-        } catch(err) {
-            alert("Ошибка JSON!");
-            return;
+        var errBox = document.getElementById("intel-error");
+        if (errBox) errBox.style.display = "none";
+        var grid;
+
+        if (!raw) {
+            grid = generateBetaMap();
+        } else {
+            try {
+                grid = JSON.parse(raw);
+            } catch (err) {
+                this._intelError("Ошибка JSON: " + err.message);
+                return;
+            }
+            if (!grid || typeof grid !== "object" || Array.isArray(grid)) {
+                this._intelError("Ожидался объект вида {\"0,0\": \"loners\"}");
+                return;
+            }
+            // Оставляем только клетки с известными фракциями
+            var valid = {}, dropped = 0;
+            Object.keys(grid).forEach(function(key) {
+                var id = grid[key];
+                if (typeof id === "string" && FACTIONS[id]) valid[key] = id;
+                else dropped++;
+            });
+            if (!Object.keys(valid).length) {
+                this._intelError("В карте нет ни одной известной фракции");
+                return;
+            }
+            if (dropped) {
+                State.createAlert("ПРОПУЩЕНО НЕИЗВЕСТНЫХ КЛЕТОК: " + dropped, 6, "war");
+            }
+            grid = valid;
         }
+
+        State.grid      = grid;
+        State.cellStats = {};   // старые данные клеток больше не актуальны
         this.showGame();
     },
 
+    _intelError: function(message) {
+        var box = document.getElementById("intel-error");
+        if (box) {
+            box.innerText = message;
+            box.style.display = "block";
+        } else {
+            State.createAlert(message, 6, "war");
+        }
+    },
+
     loadBetaMap: function() {
-        State.grid = generateBetaMap();
+        State.grid      = generateBetaMap();
+        State.cellStats = {};   // новая карта — новые данные клеток
         this.showGame();
     },
 
@@ -71,7 +112,37 @@ var UI = {
         document.getElementById("main-menu").style.display     = "none";
         document.getElementById("game-container").style.display = "block";
         Renderer.resize();
+        this.centerCameraOnMap();
         this.initEditorUI();
+    },
+
+    // Ставим камеру в центр карты и подбираем масштаб,
+    // иначе карта уезжает в правый нижний угол экрана.
+    centerCameraOnMap: function() {
+        var keys = Object.keys(State.grid);
+        if (!keys.length) return;
+
+        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        keys.forEach(function(pos) {
+            var p = pos.split(",");
+            var x = parseInt(p[0], 10), y = parseInt(p[1], 10);
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        });
+
+        var w = (maxX - minX + 1) * CELL_SIZE;
+        var h = (maxY - minY + 1) * CELL_SIZE;
+
+        State.camera.x = ((minX + maxX + 1) / 2) * CELL_SIZE;
+        State.camera.y = ((minY + maxY + 1) / 2) * CELL_SIZE;
+
+        var fit = Math.min(
+            (window.innerWidth  - 80) / Math.max(1, w),
+            (window.innerHeight - 120) / Math.max(1, h)
+        );
+        State.camera.zoom = Math.max(0.4, Math.min(4, fit));
     },
 
     // ═══════════════════════════════════════════════
@@ -199,11 +270,15 @@ var UI = {
 
         var el;
         el = document.getElementById("intel-name");     if (el) el.innerText = info.name;
-        el = document.getElementById("intel-leader");   
+        el = document.getElementById("intel-leader");
         if (el) {
-            var leaders = FACTION_LEADERS[id];
-            if (leaders && leaders[0]) el.innerText = leaders[0].name;
-            else el.innerText = "Неизвестен";
+            var leaders = FACTION_LEADERS[id] || [];
+            var lead = null;
+            for (var i = 0; i < leaders.length; i++) {
+                if (leaders[i].id === (FACTIONS[id] && FACTIONS[id].defaultLeader)) lead = leaders[i];
+            }
+            if (!lead && leaders.length) lead = leaders[0];
+            el.innerText = lead ? lead.name : "Неизвестен";
         }
         el = document.getElementById("intel-ideology"); if (el) el.innerText = info.ideology;
         el = document.getElementById("cell-stalkers");  if (el) el.innerText = cell.stalkers;

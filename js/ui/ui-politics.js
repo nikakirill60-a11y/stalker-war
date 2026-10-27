@@ -76,6 +76,7 @@ var UIPolitics = {
             unitAttack:  { label: "Атака юнитов", icon: "⚔️", isPercent: true },
             unitDefense: { label: "Защита юнитов", icon: "🛡️", isPercent: true },
             unitHP:      { label: "HP юнитов", icon: "❤️", isPercent: true },
+            unitSpeed:   { label: "Скорость", icon: "👟", isPercent: true },
             unitCost:    { label: "Стоимость юнитов", icon: "💰", isPercent: true },
             maintenanceCost: { label: "Содержание", icon: "🔧", isPercent: true },
             recruitCost: { label: "Найм", icon: "👥", isPercent: true },

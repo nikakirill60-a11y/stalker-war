@@ -90,7 +90,7 @@ var ModEditor = {
         html += '<div style="display:flex;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid #2a3a2a">' +
             '<button onclick="ModEditor.saveMod()" class="game-btn" style="flex:1">💾 Сохранить</button>' +
             '<button onclick="ModEditor.exportMod()" class="game-btn amber" style="flex:1">📦 Экспортировать ZIP</button>' +
-            '<button onclick="UI.renderMods()" class="game-btn red">❌ Закрыть</button>' +
+            '<button onclick="UIMods.render()" class="game-btn red">❌ Закрыть</button>' +
         '</div>';
 
         UI.setBody(html);
@@ -166,7 +166,7 @@ var ModEditor = {
     addFaction: function() {
         var id = prompt("Введите ID фракции (латиница, без пробелов):");
         if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-            alert("Неверный ID");
+            State.createAlert("НЕВЕРНЫЙ ID: ТОЛЬКО ЛАТИНИЦА, ЦИФРЫ, _ И -", 6, "war");
             return;
         }
 
@@ -374,7 +374,7 @@ var ModEditor = {
     addLeader: function() {
         var select = document.getElementById('leader-faction-select');
         if (!select) {
-            alert("Ошибка: выберите фракцию");
+            State.createAlert("СНАЧАЛА ВЫБЕРИТЕ ФРАКЦИЮ", 6, "war");
             return;
         }
         
@@ -382,7 +382,7 @@ var ModEditor = {
         
         var id = prompt("Введите ID лидера (латиница):");
         if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-            alert("Неверный ID");
+            State.createAlert("НЕВЕРНЫЙ ID: ТОЛЬКО ЛАТИНИЦА, ЦИФРЫ, _ И -", 6, "war");
             return;
         }
 
@@ -447,7 +447,7 @@ var ModEditor = {
         try {
             leader.bonuses = JSON.parse(document.getElementById('edit-leader-bonuses').value);
         } catch(e) {
-            alert("Ошибка в JSON бонусов: " + e.message);
+            State.createAlert("ОШИБКА В JSON БОНУСОВ: " + e.message, 8, "war");
             return;
         }
 
@@ -529,7 +529,7 @@ var ModEditor = {
     addWeapon: function() {
         var id = prompt("ID оружия (латиница):");
         if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-            alert("Неверный ID");
+            State.createAlert("НЕВЕРНЫЙ ID: ТОЛЬКО ЛАТИНИЦА, ЦИФРЫ, _ И -", 6, "war");
             return;
         }
 
@@ -674,7 +674,7 @@ var ModEditor = {
     addArmor: function() {
         var id = prompt("ID брони (латиница):");
         if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-            alert("Неверный ID");
+            State.createAlert("НЕВЕРНЫЙ ID: ТОЛЬКО ЛАТИНИЦА, ЦИФРЫ, _ И -", 6, "war");
             return;
         }
 
@@ -818,7 +818,7 @@ var ModEditor = {
     addArtifact: function() {
         var id = prompt("ID артефакта (латиница):");
         if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-            alert("Неверный ID");
+            State.createAlert("НЕВЕРНЫЙ ID: ТОЛЬКО ЛАТИНИЦА, ЦИФРЫ, _ И -", 6, "war");
             return;
         }
 

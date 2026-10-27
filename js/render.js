@@ -164,10 +164,17 @@ var Renderer = {
             var x = parseInt(parts[0]);
             var y = parseInt(parts[1]);
             var last = cell.buildings[cell.buildings.length - 1];
-            ctx.font         = Math.floor(S * 0.55) + "px sans-serif";
-            ctx.textAlign    = "left";
-            ctx.textBaseline = "bottom";
-            ctx.fillText(icons[last] || "🏗", x * S + 1, y * S + S - 1);
+            var img = AssetManager.get("icons", last);
+
+            if (img && img.width) {
+                var size = S * 0.62;
+                ctx.drawImage(img, x * S + S - size - 1, y * S + S - size - 1, size, size);
+            } else {
+                ctx.font         = Math.floor(S * 0.55) + "px sans-serif";
+                ctx.textAlign    = "left";
+                ctx.textBaseline = "bottom";
+                ctx.fillText(icons[last] || "🏗", x * S + 1, y * S + S - 1);
+            }
         });
     },
 
@@ -270,7 +277,7 @@ _drawUnits: function() {
         var by  = u.visualY + S / 2 - 4;
         ctx.fillStyle = "#300";
         ctx.fillRect(bx, by, bw, 3);
-        var pct = Math.max(0, u.hp / u.maxHp);
+        var pct = u.maxHp > 0 ? Math.max(0, Math.min(1, u.hp / u.maxHp)) : 0;
         ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.25 ? "#f59e0b" : "#ef4444");
         ctx.fillRect(bx, by, bw * pct, 3);
     });

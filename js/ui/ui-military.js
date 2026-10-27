@@ -224,24 +224,24 @@ var UIMilitary = {
     equipFromInventory: function(unitId, itemId, itemType) {
         var unit = State.units.find(function(u) { return u.id === unitId; });
         if (!unit) return;
-        
-        // Возвращаем старый предмет в инвентарь
-        if (itemType === 'weapon' && unit.weapon) {
-            State.inventory.weapons.push(unit.weapon);
-        } else if (itemType === 'armor' && unit.armor) {
-            State.inventory.armor.push(unit.armor);
+
+        if (!State.inventory) State.inventory = { weapons: [], armor: [] };
+        var slot  = itemType === 'weapon' ? 'weapons' : 'armor';
+        var bag   = State.inventory[slot] = State.inventory[slot] || [];
+        var oldId = itemType === 'weapon' ? unit.weapon : unit.armor;
+
+        var idx = bag.indexOf(itemId);
+        if (idx === -1) {
+            State.createAlert("ПРЕДМЕТА НЕТ В ИНВЕНТАРЕ", 3, "war");
+            return;
         }
-        
-        // Экипируем новый
-        if (itemType === 'weapon') {
-            unit.weapon = itemId;
-            var idx = State.inventory.weapons.indexOf(itemId);
-            if (idx !== -1) State.inventory.weapons.splice(idx, 1);
-        } else {
-            unit.armor = itemId;
-            var idx = State.inventory.armor.indexOf(itemId);
-            if (idx !== -1) State.inventory.armor.splice(idx, 1);
-        }
+        bag.splice(idx, 1);
+
+        // Старый предмет возвращаем в инвентарь (если он не тот же самый)
+        if (oldId && oldId !== itemId) bag.push(oldId);
+
+        if (itemType === 'weapon') unit.weapon = itemId;
+        else                       unit.armor  = itemId;
         
         // Пересчёт
         State.recalculateUnitStats(unit);

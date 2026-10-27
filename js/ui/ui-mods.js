@@ -98,12 +98,12 @@ var UIMods = {
     renderUpload: function(container) {
         var html = '<div style="padding:20px;text-align:center">' +
             '<div style="font-size:48px;margin-bottom:16px">📦</div>' +
-            '<div style="font-size:12px;color:#c8a84b;margin-bottom:16px">Загрузите архив мода (.zip или .rar)</div>' +
+            '<div style="font-size:12px;color:#c8a84b;margin-bottom:16px">Загрузите архив мода (.zip)</div>' +
             '<div style="display:flex;gap:8px;margin-bottom:16px">' +
                 '<button onclick="document.getElementById(\'mod-file-input\').click()" class="game-btn blue" style="flex:1;padding:12px;font-size:10px">📁 ВЫБРАТЬ ФАЙЛ</button>' +
                 '<button onclick="UIMods.downloadTemplate()" class="game-btn amber" style="flex:1;padding:12px;font-size:10px">📋 ШАБЛОН</button>' +
             '</div>' +
-            '<input type="file" id="mod-file-input" style="display:none" accept=".rar,.zip" onchange="UIMods.handleModFile(this)">' +
+            '<input type="file" id="mod-file-input" style="display:none" accept=".zip" onchange="UIMods.handleModFile(this)">' +
             '<div style="background:rgba(0,0,0,0.3);border:1px solid #2a3a2a;padding:16px;border-radius:2px">' +
                 '<div style="font-size:10px;color:#6a8a6a;margin-bottom:12px;text-align:left">📖 Структура архива:</div>' +
                 '<pre style="background:#0a120a;border:1px solid #1a2a1a;padding:12px;font-size:8px;color:#4ade80;overflow-x:auto;text-align:left">' +
@@ -132,8 +132,7 @@ var UIMods = {
                 UIMods.showTab('browser');
             },
             function(error) {
-                // Ошибка
-                alert("Ошибка загрузки мода: " + error);
+                State.createAlert("ОШИБКА МОДА: " + error, 8, "war");
             }
         );
     },
@@ -182,7 +181,7 @@ var UIMods = {
 
     loadModForEditing: function() {
         if (ModManager.loadedMods.length === 0) {
-            alert("Нет модов для редактирования");
+            State.createAlert("НЕТ МОДОВ ДЛЯ РЕДАКТИРОВАНИЯ", 4, "info");
             return;
         }
 

@@ -31,6 +31,7 @@ var AssetManager = {
             krylov:     "assets/leaders/krylov.png",
             voronin:    "assets/leaders/voronin.png",
             shulga:     "assets/leaders/shulga.png",
+            volkodav:   "assets/leaders/volkodav.png",
             chekhov:    "assets/leaders/chekhov.png",
             lukash:     "assets/leaders/lukash.png",
             loki:       "assets/leaders/loki.png",
@@ -204,8 +205,8 @@ var AssetManager = {
         // ─── UI ЭЛЕМЕНТЫ ──────────────────────
         ui: {
             logo:       "assets/ui/logo.png",
-            background: "assets/ui/background.png",
-            loading:    "assets/ui/loading.png",
+            background: "assets/ui/background.jpg",
+            loading:    "assets/ui/loading.jpg",
         },
     },
 

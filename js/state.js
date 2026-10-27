@@ -102,6 +102,8 @@ var State = {
             name:  art.name,
             price: art.price,
             icon:  art.icon,
+            type:  art.type,
+            rarity: art.rarity,
             foundDate: new Date(this.gameDate)
         });
         
@@ -118,13 +120,19 @@ var State = {
     },
 
     // ─── ОСТАЛЬНЫЕ МЕТОДЫ ──────────────────────
+    // Данные клетки генерируются один раз и запоминаются.
+    // Аномалии и сильный фон — редкость, иначе карта превращается в шум.
     getCellData: function(key) {
         if (!this.cellStats[key]) {
+            var dangerous = Math.random() < 0.18;
+
             this.cellStats[key] = {
-                stalkers: Math.floor(Math.random() * 50) + 5,
-                radiation: Math.floor(Math.random() * 100),
-                anomalies: Math.floor(Math.random() * 5),
-                artifacts: Math.floor(Math.random() * 3),
+                stalkers:  5 + Math.floor(Math.random() * 46),
+                radiation: dangerous
+                    ? 45 + Math.floor(Math.random() * 55)
+                    : Math.floor(Math.random() * 30),
+                anomalies: dangerous ? 1 + Math.floor(Math.random() * 3) : 0,
+                artifacts: dangerous && Math.random() < 0.25 ? 1 : 0,
                 buildings: []
             };
         }
@@ -175,8 +183,11 @@ var State = {
 
     // ─── СПАУН ЮНИТОВ С ЭКИПИРОВКОЙ ────────────
     spawnUnit: function(pos, owner, type) {
-        var bonuses = owner === this.myFactionId ? this.getLeaderBonuses() : {};
-        var defs = getUnitDefs(this.tech, bonuses);
+        var isMine  = owner === this.myFactionId;
+        var bonuses = isMine ? this.getLeaderBonuses() : {};
+        // ИИ не наследует технологии игрока
+        var tech    = isMine ? this.tech : { weapons: 1, armor: 1, artifacts: 1, survival: 1 };
+        var defs = getUnitDefs(tech, bonuses);
         var def  = defs[type];
         if (!def) return;
 
@@ -242,8 +253,10 @@ var State = {
     },
 
     recalculateUnitStats: function(unit) {
-        var bonuses = unit.owner === this.myFactionId ? this.getLeaderBonuses() : {};
-        var defs = getUnitDefs(this.tech, bonuses);
+        var isMine  = unit.owner === this.myFactionId;
+        var bonuses = isMine ? this.getLeaderBonuses() : {};
+        var tech    = isMine ? this.tech : { weapons: 1, armor: 1, artifacts: 1, survival: 1 };
+        var defs = getUnitDefs(tech, bonuses);
         var def  = defs[unit.type];
         
         if (!def) return;

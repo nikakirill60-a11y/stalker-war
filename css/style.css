@@ -1,4 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+/* Шрифт лежит локально — без внешних CDN */
+@font-face {
+    font-family: 'Share Tech Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../assets/fonts/share-tech-mono-latin-400-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
     --stalker-green:  #4a7c4e;
@@ -29,7 +37,7 @@ body, html {
     position: fixed; inset: 0; z-index: 1000;
     background:
         linear-gradient(rgba(0,0,0,0.65) 0%, rgba(0,20,5,0.85) 100%),
-        url('https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&q=80&w=1600')
+        url('../assets/ui/background.jpg')
         center/cover no-repeat;
     display: flex;
     align-items: center;
@@ -91,6 +99,14 @@ body, html {
         rgba(0,0,0,0.07) 2px,
         rgba(0,0,0,0.07) 4px
     );
+}
+
+.menu-logo {
+    display: block;
+    margin: 0 auto 1rem;
+    width: 96px; height: 96px;
+    filter: drop-shadow(0 0 18px rgba(74, 222, 128, 0.35));
+    animation: glow-pulse 4s ease-in-out infinite;
 }
 
 .menu-title {
@@ -559,47 +575,6 @@ img[src] {
     padding-right: 28px;
 }
 
-/* ═══════════════ РЕДАКТОР МОДОВ ════════════════ */
-.mod-tab-btn {
-    background: rgba(10,20,10,0.5);
-    border: 1px solid #2a3a2a;
-    padding: 6px 14px;
-    cursor: pointer;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #6a8a6a;
-    transition: all 0.2s;
-}
-
-.mod-tab-btn.active {
-    background: rgba(74,124,78,0.3);
-    color: var(--radiation);
-    border-color: var(--stalker-green);
-}
-
-.mod-tab-btn:hover {
-    border-color: var(--stalker-green);
-    color: var(--radiation);
-}
-
-.mod-input {
-    width: 100%;
-    background: #0a120a;
-    border: 1px solid #2a3a2a;
-    color: #4ade80;
-    padding: 6px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 11px;
-}
-
-.mod-input:focus {
-    outline: none;
-    border-color: var(--stalker-green);
-    box-shadow: 0 0 8px rgba(74,222,128,0.2);
-}
-
 /* ═══════════════ АДАПТИВНОСТЬ ══════════════════ */
 @media (max-width: 600px) {
     .leader-portrait {
@@ -619,4 +594,36 @@ img[src] {
 .fi-military  { border-left-color: #84cc16 !important; }
 .fi-scientists{ border-left-color: #06b6d4 !important; }
 .fi-renegades { border-left-color: #78350f !important; }
+.fi-ozone     { border-left-color: #6d28d9 !important; }
 .fi-ozone     { border-left-color: #8b5cf6 !important; }
+
+/* ═══════════════ УТИЛИТЫ ══════════════════════
+   Раньше часть классов приходила из Tailwind CDN.
+   Теперь они определены локально, чтобы игра работала офлайн. */
+.hidden          { display: none !important; }
+.flex            { display: flex; }
+.gap-3           { gap: 0.75rem; }
+.mr-4            { margin-right: 1rem; }
+.w-full          { width: 100%; }
+.text-\[10px\]   { font-size: 10px; }
+.text-blue-400   { color: #60a5fa; }
+.text-green-400  { color: #4ade80; }
+.text-amber-500  { color: #f59e0b; }
+.text-yellow-500 { color: #eab308; }
+
+@keyframes util-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+.animate-pulse  { animation: util-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes util-bounce {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); }
+}
+.animate-bounce { animation: util-bounce 1.2s ease-in-out infinite; display: inline-block; }
+
+/* Уважаем системную настройку «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+    .animate-pulse, .animate-bounce, .menu-panel, .menu-title { animation: none !important; }
+}

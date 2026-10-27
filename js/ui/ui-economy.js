@@ -77,6 +77,10 @@ var UIEconomy = {
 
     buyItem: function(itemId, itemType) {
         var item = itemType === 'weapon' ? Items.getWeapon(itemId) : Items.getArmor(itemId);
+        if (!item || typeof item.price !== 'number') {
+            State.createAlert("ТОВАР НЕДОСТУПЕН", 3, "war");
+            return;
+        }
         if (State.resources.rubles >= item.price) {
             State.resources.rubles -= item.price;
             
@@ -179,20 +183,25 @@ var UIEconomy = {
         } else {
             html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
             artifacts.forEach(function(art, index) {
-                var artData = ARTIFACTS[art.id];
+                // Данные берём из ARTIFACTS, а если артефакт пришёл из мода/сейва —
+                // подставляем то, что записано в самом объекте.
+                var artData = ARTIFACTS[art.id] || art;
+                var rarity  = art.rarity || artData.rarity || 1;
                 var img = AssetManager.get("artifacts", art.id);
-                var imgHtml = img 
-                    ? '<img src="' + img.src + '" style="width:64px;height:64px;object-fit:contain;margin:0 auto 8px;display:block">' 
+                var imgHtml = img
+                    ? '<img src="' + img.src + '" style="width:64px;height:64px;object-fit:contain;margin:0 auto 8px;display:block">'
                     : '<div style="font-size:48px">💎</div>';
-                
-                var rarityColor = art.rarity === 3 ? '#a855f7' : (art.rarity === 2 ? '#60a5fa' : '#4ade80');
-                var rarityStars = '★'.repeat(art.rarity);
-                
+
+                var rarityColor = rarity === 3 ? '#a855f7' : (rarity === 2 ? '#60a5fa' : '#4ade80');
+                var rarityStars = '★'.repeat(rarity);
+                var typeLabel   = (artData.type || art.type || "unknown").toUpperCase();
+                var artPrice    = artData.price || art.price || 0;
+
                 html += '<div class="unit-card" style="text-align:center;border-color:' + rarityColor + '30">' +
                     imgHtml +
                     '<div style="font-size:11px;font-weight:bold;margin-bottom:4px">' + art.name + '</div>' +
-                    '<div style="font-size:9px;color:' + rarityColor + ';margin-bottom:6px">' + rarityStars + ' ' + artData.type.toUpperCase() + '</div>' +
-                    '<div style="color:#c8a84b;font-weight:bold;margin-bottom:8px">' + artData.price.toLocaleString() + ' RU</div>' +
+                    '<div style="font-size:9px;color:' + rarityColor + ';margin-bottom:6px">' + rarityStars + ' ' + typeLabel + '</div>' +
+                    '<div style="color:#c8a84b;font-weight:bold;margin-bottom:8px">' + artPrice.toLocaleString() + ' RU</div>' +
                     '<button onclick="UIEconomy.sellArtifact(' + index + ')" class="game-btn amber" style="width:100%;font-size:9px">💰 ПРОДАТЬ</button>' +
                 '</div>';
             });
@@ -205,13 +214,14 @@ var UIEconomy = {
         if (index < 0 || index >= State.artifacts.length) return;
         
         var art = State.artifacts[index];
-        var artData = ARTIFACTS[art.id];
-        
-        State.resources.rubles += artData.price;
+        var artData = ARTIFACTS[art.id] || art;
+        var price = artData.price || art.price || 0;
+
+        State.resources.rubles += price;
         State.artifacts.splice(index, 1);
-        
+
         State.createAlert(
-            "ПРОДАН АРТЕФАКТ: " + art.name.toUpperCase() + " (+" + artData.price.toLocaleString() + " RU)",
+            "ПРОДАН АРТЕФАКТ: " + art.name.toUpperCase() + " (+" + price.toLocaleString() + " RU)",
             8, "info"
         );
         
