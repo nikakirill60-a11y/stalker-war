@@ -14,6 +14,23 @@ const PORT_RANGE         = 6;
 const AMPHIBIOUS_DAYS    = 25;
 const MAX_AI_ARMY_SIZE   = 10; // Лимит армии ИИ
 
+// ─── УСЛОВИЯ ЗАВЕРШЕНИЯ ПАРТИИ ───────────────────
+const WIN_CONTROL_PERCENT = 30;   // % Зоны для победы по контролю   // % Зоны для победы по контролю
+const LAST_STAND_DAYS     = 10;  // дней неприкосновенности после «последнего шанса»
+
+// ─── ЭКОНОМИКА ───────────────────────────────────
+const RUBLES_PER_SECTOR   = 12;  // доход с сектора в день
+const RUBLES_PER_CACHE    = 25;  // доход со схрона в день
+const RUBLES_PER_UNIT     = 3;   // содержание отряда в день
+const ARMY_BASE_LIMIT     = 10;  // лимит отрядов без схронов
+const ARMY_PER_CACHE      = 3;   // +3 к лимиту за каждый схрон
+const SELL_RATE           = 0.6; // доля цены при продаже предмета
+
+// ─── ОПАСНОСТЬ ЗОНЫ ──────────────────────────────
+const RADIATION_THRESHOLD = 60;  // с этого уровня фона юниты получают урон
+const RADIATION_DAMAGE    = 3;   // урон в день на «грязной» клетке
+const ANOMALY_DAMAGE      = 5;   // урон за проход через аномалию (× число аномалий)
+
 const MONTHS = [
     "ЯНВ","ФЕВ","МАР","АПР","МАЙ","ИЮН",
     "ИЮЛ","АВГ","СЕН","ОКТ","НОЯ","ДЕК"
@@ -107,6 +124,17 @@ const FACTION_LEADERS = {
                 recruitCost: 0.85,
             },
             description: "Тактик. Мощная оборона и дешёвый найм."
+        },
+        {
+            id: "volkodav",
+            name: "Волкодав",
+            portrait: "volkodav",
+            quote: "Зона не прощает ошибок. Я — тем более.",
+            bonuses: {
+                unitAttack: 1.10,
+                unitSpeed: 1.15,            // быстрее двигаются по карте
+            },
+            description: "Ветеран Долга. Агрессивные и быстрые отряды."
         },
     ],
 
@@ -480,9 +508,16 @@ const FACTIONS = {
 // ═══════════════════════════════════════════════
 function getUnitDefs(tech, leaderBonuses) {
     if (!leaderBonuses) leaderBonuses = {};
-    
+    if (!tech) tech = { weapons: 1, armor: 1, artifacts: 1, survival: 1 };
+
     var costMult    = leaderBonuses.unitCost    || 1;
     var maintMult   = leaderBonuses.maintenanceCost || 1;
+
+    // Бонусы исследований: оружие → атака, броня → защита,
+    // артефакты → запас здоровья, выживание → экономика (см. engine)
+    var atkTech = 1 + (Math.max(1, tech.weapons)   - 1) * 0.10;
+    var defTech = 1 + (Math.max(1, tech.armor)     - 1) * 0.10;
+    var hpTech  = 1 + (Math.max(1, tech.artifacts) - 1) * 0.08;
     
     return {
         stalker: {
@@ -490,9 +525,9 @@ function getUnitDefs(tech, leaderBonuses) {
             icon:          "🧥",
             costEquipment: Math.round(120 * costMult),
             costManpower:  800,
-            baseHp:        80,
-            baseAttack:    8,
-            baseDefense:   15,
+            baseHp:        Math.round(80  * hpTech),
+            baseAttack:    Math.round(8   * atkTech),
+            baseDefense:   Math.round(15  * defTech),
             maintenance:   0.3 * maintMult,
         },
         soldier: {
@@ -500,9 +535,9 @@ function getUnitDefs(tech, leaderBonuses) {
             icon:          "🪖",
             costEquipment: Math.round(200 * costMult),
             costManpower:  600,
-            baseHp:        100,
-            baseAttack:    12,
-            baseDefense:   20,
+            baseHp:        Math.round(100 * hpTech),
+            baseAttack:    Math.round(12  * atkTech),
+            baseDefense:   Math.round(20  * defTech),
             maintenance:   0.5 * maintMult,
         },
         sniper: {
@@ -510,9 +545,9 @@ function getUnitDefs(tech, leaderBonuses) {
             icon:          "🎯",
             costEquipment: Math.round(350 * costMult),
             costManpower:  400,
-            baseHp:        60,
-            baseAttack:    25,
-            baseDefense:   8,
+            baseHp:        Math.round(60  * hpTech),
+            baseAttack:    Math.round(25  * atkTech),
+            baseDefense:   Math.round(8   * defTech),
             maintenance:   0.8 * maintMult,
         },
     };
@@ -557,29 +592,154 @@ var TECH_CONFIG = {
 // ═══════════════════════════════════════════════
 var FACTION_FOCUSES = {
     loners: [
-        {
-            id: "lon_union",
-            name: "Союз Одиночек",
-            description: "+500 снаряжения и 2 новых бойца",
-            effect: function(state) {
-                state.resources.equipment += 500;
-                _spawnRandom(state, state.myFactionId, "stalker", 2);
-                state.createAlert("ОДИНОЧКИ ОБЪЕДИНЯЮТСЯ! +500 СНАРЯЖЕНИЯ", 10, "info");
-            },
-        },
+        { id: "lon_union", name: "Союз Одиночек", description: "+500 снаряжения и 2 новых сталкера",
+          effect: function(state) {
+              state.resources.equipment += 500;
+              _spawnRandom(state, state.myFactionId, "stalker", 2);
+              state.createAlert("ОДИНОЧКИ ОБЪЕДИНЯЮТСЯ! +500 СНАРЯЖЕНИЯ", 10, "info");
+          } },
+        { id: "lon_trade", name: "Торговые связи", description: "+3 000 рублей в казну",
+          effect: function(state) {
+              state.resources.rubles += 3000;
+              state.createAlert("ТОРГОВЛЯ НАЛАЖЕНА: +3 000 RU", 10, "info");
+          } },
     ],
+
     duty: [
-        {
-            id: "duty_martial",
-            name: "Военная мобилизация",
-            description: "+4 бойца",
-            effect: function(state) {
-                _spawnRandom(state, "duty", "soldier", 4);
-                state.createAlert("ДОЛГ МОБИЛИЗОВАН: +4 БОЙЦА", 10, "war");
-            },
-        },
+        { id: "duty_martial", name: "Военная мобилизация", description: "+4 бойца",
+          effect: function(state) {
+              _spawnRandom(state, state.myFactionId, "soldier", 4);
+              state.createAlert("ДОЛГ МОБИЛИЗОВАН: +4 БОЙЦА", 10, "war");
+          } },
+        { id: "duty_supply", name: "Армейские склады", description: "+900 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 900;
+              state.createAlert("СКЛАДЫ ВСКРЫТЫ: +900 СНАРЯЖЕНИЯ", 10, "info");
+          } },
     ],
-    // ... остальные фокусы аналогично
+
+    freedom: [
+        { id: "free_forest", name: "Лесное братство", description: "+3 сталкера и +400 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 400;
+              _spawnRandom(state, state.myFactionId, "stalker", 3);
+              state.createAlert("СВОБОДА НАБИРАЕТ ЛЮДЕЙ: +3 СТАЛКЕРА", 10, "info");
+          } },
+        { id: "free_smoke", name: "Дымовая завеса", description: "+2 000 рублей",
+          effect: function(state) {
+              state.resources.rubles += 2000;
+              state.createAlert("КОНТРАБАНДА ПРОШЛА: +2 000 RU", 10, "info");
+          } },
+    ],
+
+    bandits: [
+        { id: "band_loot", name: "Большой налёт", description: "+4 000 рублей",
+          effect: function(state) {
+              state.resources.rubles += 4000;
+              state.createAlert("НАЛЁТ УДАЛСЯ: +4 000 RU", 10, "war");
+          } },
+        { id: "band_press", name: "Рэкет", description: "+2 500 рублей и +400 снаряжения",
+          effect: function(state) {
+              state.resources.rubles += 2500;
+              state.resources.equipment += 400;
+              state.createAlert("ДАНИ СОБРАНЫ: +2 500 RU, +400 СНАРЯЖЕНИЯ", 10, "info");
+          } },
+    ],
+
+    clearnsky: [
+        { id: "cs_recon", name: "Разведка Зоны", description: "+2 снайпера и +300 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 300;
+              _spawnRandom(state, state.myFactionId, "sniper", 2);
+              state.createAlert("РАЗВЕДКА ГОТОВА: +2 СНАЙПЕРА", 10, "info");
+          } },
+        { id: "cs_lab", name: "Полевая лаборатория", description: "+1 уровень технологии артефактов",
+          effect: function(state) {
+              state.tech.artifacts = Math.min(5, state.tech.artifacts + 1);
+              state.createAlert("ПРОРЫВ В ИЗУЧЕНИИ АРТЕФАКТОВ", 10, "info");
+          } },
+    ],
+
+    monolith: [
+        { id: "mono_faith", name: "Единая вера", description: "+4 бойца",
+          effect: function(state) {
+              _spawnRandom(state, state.myFactionId, "soldier", 4);
+              state.createAlert("МОНОЛИТ ПРИЗЫВАЕТ: +4 БОЙЦА", 10, "war");
+          } },
+        { id: "mono_prism", name: "Призматический обряд", description: "+1 500 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 1500;
+              state.createAlert("ОБРЯД ЗАВЕРШЁН: +1 500 СНАРЯЖЕНИЯ", 10, "info");
+          } },
+    ],
+
+    mercs: [
+        { id: "merc_contract", name: "Жирный контракт", description: "+5 000 рублей",
+          effect: function(state) {
+              state.resources.rubles += 5000;
+              state.createAlert("КОНТРАКТ ВЫПОЛНЕН: +5 000 RU", 10, "info");
+          } },
+        { id: "merc_squad", name: "Ударная группа", description: "+2 снайпера и +2 бойца",
+          effect: function(state) {
+              _spawnRandom(state, state.myFactionId, "sniper", 2);
+              _spawnRandom(state, state.myFactionId, "soldier", 2);
+              state.createAlert("ГРУППА СОБРАНА: +2 СНАЙПЕРА, +2 БОЙЦА", 10, "info");
+          } },
+    ],
+
+    military: [
+        { id: "mil_supply", name: "Централизованное снабжение", description: "+1 200 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 1200;
+              state.createAlert("СНАБЖЕНИЕ ПРИБЫЛО: +1 200", 10, "info");
+          } },
+        { id: "mil_arty", name: "Артподготовка", description: "+3 бойца",
+          effect: function(state) {
+              _spawnRandom(state, state.myFactionId, "soldier", 3);
+              state.createAlert("ПОДКРЕПЛЕНИЕ: +3 БОЙЦА", 10, "war");
+          } },
+    ],
+
+    scientists: [
+        { id: "sci_breakthrough", name: "Научный прорыв", description: "+1 уровень технологии выживания",
+          effect: function(state) {
+              state.tech.survival = Math.min(5, state.tech.survival + 1);
+              state.createAlert("ПРОРЫВ: ТЕХНОЛОГИЯ ВЫЖИВАНИЯ +1", 10, "info");
+          } },
+        { id: "sci_grant", name: "Грант на исследования", description: "+3 000 рублей и +300 снаряжения",
+          effect: function(state) {
+              state.resources.rubles += 3000;
+              state.resources.equipment += 300;
+              state.createAlert("ГРАНТ ПОЛУЧЕН: +3 000 RU", 10, "info");
+          } },
+    ],
+
+    renegades: [
+        { id: "ren_scavenge", name: "Мародёрство", description: "+600 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 600;
+              state.createAlert("ХЛАМ СОБРАН: +600 СНАРЯЖЕНИЯ", 10, "info");
+          } },
+        { id: "ren_raid", name: "Отчаянный рейд", description: "+4 сталкера",
+          effect: function(state) {
+              _spawnRandom(state, state.myFactionId, "stalker", 4);
+              state.createAlert("ИЗГОИ ИДУТ В БОЙ: +4 СТАЛКЕРА", 10, "war");
+          } },
+    ],
+
+    ozone: [
+        { id: "oz_hive", name: "Единый разум", description: "+4 бойца",
+          effect: function(state) {
+              _spawnRandom(state, state.myFactionId, "soldier", 4);
+              state.createAlert("КОЛЛЕКТИВ СОБРАН: +4 БОЙЦА", 10, "info");
+          } },
+        { id: "oz_psi", name: "Пси-излучение", description: "+2 снайпера и +1 000 снаряжения",
+          effect: function(state) {
+              state.resources.equipment += 1000;
+              _spawnRandom(state, state.myFactionId, "sniper", 2);
+              state.createAlert("ПСИ-ИМПУЛЬС: +2 СНАЙПЕРА, +1 000 СНАРЯЖЕНИЯ", 10, "info");
+          } },
+    ],
 };
 
 // ═══════════════════════════════════════════════
@@ -824,26 +984,36 @@ const ARTIFACT_DROP_CHANCES = {
 };
 
 function generateBetaMap() {
+    var W = 28, H = 20;
     var grid = {};
+
+    // Прямоугольники фракций. Вместе покрывают всю карту без дыр,
+    // иначе юниты не могут пройти через «пустые» клетки.
     var zones = [
-        ["military",    0,  0,  8,  6],
+        // ── север (y 0..4) ──────────────────────
+        ["military",    0,  0,  8,  5],
         ["loners",      8,  0,  8,  5],
         ["bandits",    16,  0,  6,  5],
-        ["renegades",   0,  6,  5,  5],
-        ["clearnsky",   5,  6,  6,  5],
-        ["loners",     11,  5,  5,  4],
-        ["duty",       16,  5,  6,  6],
+        ["ozone",      22,  0,  6,  5],
+        // ── центр-север (y 5..9) ────────────────
+        ["renegades",   0,  5,  5,  5],
+        ["clearnsky",   5,  5,  6,  5],
+        ["loners",     11,  5,  5,  5],
+        ["duty",       16,  5,  6,  5],
         ["scientists", 22,  5,  6,  5],
-        ["freedom",     0, 11,  7,  5],
+        // ── центр-юг (y 10..14) ─────────────────
+        ["freedom",     0, 10,  7,  5],
         ["mercs",       7, 10,  6,  5],
-        ["duty",       13, 11,  5,  5],
+        ["duty",       13, 10,  5,  5],
         ["monolith",   18, 10,  6,  5],
-        ["ozone",      24,  0,  4, 10],
-        ["bandits",    22, 15,  6,  4],
-        ["renegades",   0, 16,  6,  4],
-        ["military",    6, 16,  8,  4],
-        ["freedom",    14, 16,  8,  4],
+        ["ozone",      24, 10,  4,  5],
+        // ── юг (y 15..19) ───────────────────────
+        ["renegades",   0, 15,  6,  5],
+        ["military",    6, 15,  8,  5],
+        ["freedom",    14, 15,  8,  5],
+        ["bandits",    22, 15,  6,  5],
     ];
+
     zones.forEach(function(z) {
         var id = z[0], sx = z[1], sy = z[2], w = z[3], h = z[4];
         for (var x = sx; x < sx + w; x++) {
@@ -852,5 +1022,104 @@ function generateBetaMap() {
             }
         }
     });
+
+    // Страховка: если в разметке зон появилась дыра — закрашиваем её
+    // цветом соседа, чтобы карта оставалась связной.
+    var filled = true, guard = 0;
+    while (filled && guard++ < 50) {
+        filled = false;
+        for (var cx = 0; cx < W; cx++) {
+            for (var cy = 0; cy < H; cy++) {
+                var key = cx + "," + cy;
+                if (grid[key]) continue;
+                var votes = {};
+                [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function(d) {
+                    var owner = grid[(cx + d[0]) + "," + (cy + d[1])];
+                    if (owner) votes[owner] = (votes[owner] || 0) + 1;
+                });
+                var best = null;
+                Object.keys(votes).forEach(function(f) {
+                    if (best === null || votes[f] > votes[best]) best = f;
+                });
+                if (best) { grid[key] = best; filled = true; }
+            }
+        }
+    }
+
     return grid;
 }
+
+// Размеры бета-карты (используются камерой и миникартой)
+// ══════════════════════════════════════════════════
+//  ПАССИВНЫЕ БОНУСЫ АРТЕФАКТОВ (по типу)
+// ══════════════════════════════════════════════════
+// Артефакт в инвентаре работает постоянно: чем выше редкость, тем сильнее.
+var ARTIFACT_BONUS = {
+    electric:    { stat: "speed",      perRarity: 0.06, label: "скорость отрядов" },
+    chemical:    { stat: "radResist",  perRarity: 0.10, label: "защита от радиации" },
+    thermal:     { stat: "attack",     perRarity: 0.07, label: "урон в бою" },
+    gravity:     { stat: "defense",    perRarity: 0.08, label: "защита в бою" },
+    protective:  { stat: "hp",         perRarity: 0.09, label: "здоровье отрядов" },
+    rare:        { stat: "income",     perRarity: 0.05, label: "доход рублей" }
+};
+
+// Экономика: сколько рублей стоит единица снаряжения при обмене
+var RUBLES_PER_EQUIPMENT = 8;
+
+// ══════════════════════════════════════════════════
+//  ХАРАКТЕРЫ ФРАКЦИЙ И ИДЕОЛОГИЧЕСКИЕ ПРОТИВОРЕЧИЯ
+// ══════════════════════════════════════════════════
+// aggression  — как быстро копит вражду и объявляет войны
+// caution     — насколько держится за свои сектора
+// expansion   — как охотно шлёт юнитов вперёд
+// armyLimit   — сколько отрядов держит одновременно
+var FACTION_AI = {
+    loners:     { aggression: 0.5, caution: 0.6, expansion: 0.7, armyLimit: 8  },
+    duty:       { aggression: 0.9, caution: 0.8, expansion: 1.0, armyLimit: 12 },
+    freedom:    { aggression: 0.6, caution: 0.5, expansion: 0.8, armyLimit: 9  },
+    bandits:    { aggression: 1.0, caution: 0.3, expansion: 1.2, armyLimit: 10 },
+    monolith:   { aggression: 1.2, caution: 0.6, expansion: 1.3, armyLimit: 11 },
+    military:   { aggression: 0.9, caution: 0.9, expansion: 0.9, armyLimit: 12 },
+    scientists: { aggression: 0.2, caution: 1.2, expansion: 0.4, armyLimit: 6  },
+    clearnsky:  { aggression: 0.4, caution: 0.8, expansion: 0.5, armyLimit: 7  },
+    mercs:      { aggression: 0.8, caution: 0.4, expansion: 0.9, armyLimit: 9  },
+    renegades:  { aggression: 0.9, caution: 0.3, expansion: 1.0, armyLimit: 8  },
+    ozone:      { aggression: 0.7, caution: 0.7, expansion: 0.8, armyLimit: 10 }
+};
+
+// Пары, которые ненавидят друг друга с первого дня
+var IDEOLOGY_FOES = [
+    ['duty', 'freedom'],       // устав против вольницы
+    ['duty', 'bandits'],
+    ['freedom', 'military'],
+    ['bandits', 'loners'],
+    ['bandits', 'scientists'],
+    ['monolith', 'loners'],
+    ['monolith', 'scientists'],
+    ['monolith', 'duty'],
+    ['military', 'renegades'],
+    ['mercs', 'renegades'],
+    ['ozone', 'monolith']
+];
+
+// Пары, которые друг другу симпатизируют
+var IDEOLOGY_FRIENDS = [
+    ['loners', 'clearnsky'],
+    ['clearnsky', 'scientists'],
+    ['scientists', 'loners'],
+    ['duty', 'military'],
+    ['bandits', 'renegades'],
+    ['mercs', 'freedom']
+];
+
+// Порог отношений: ниже — война, выше — союз
+var RELATION_WAR_THRESHOLD    = -55;
+var RELATION_PEACE_THRESHOLD  = -20;
+var RELATION_ALLIANCE_THRESHOLD = 45;
+
+// Коалиция: если фракция держит больше стольких процентов карты —
+// все остальные начинают видеть в ней угрозу и сближаются против неё
+var COALITION_DOMINANCE_PERCENT = 32;
+
+var BETA_MAP_WIDTH  = 28;
+var BETA_MAP_HEIGHT = 20;

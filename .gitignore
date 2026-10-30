@@ -1,0 +1,9 @@
+# Зависимости для тестов и сборки ассетов
+node_modules/
+
+# Временные файлы
+package-lock.json.bak
+*.tmp
+probe.tmp.js
+.DS_Store
+Thumbs.db

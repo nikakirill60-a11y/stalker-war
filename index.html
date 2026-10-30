@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>S.T.A.L.K.E.R. — Tactical Zone Control</title>
-    <!-- Tailwind для быстрых правок, основной стиль в style.css -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body oncontextmenu="return false;">
@@ -13,9 +11,13 @@
 <!-- ══════════════ ГЛАВНОЕ МЕНЮ ══════════════════ -->
 <div id="main-menu">
     <div class="menu-panel" id="menu-home">
+        <img src="assets/ui/logo.png" alt="" class="menu-logo" width="96" height="96">
         <div class="menu-title">S.T.A.L.K.E.R.</div>
         <div class="menu-subtitle">Tactical Zone Control System v1.2</div>
 
+        <button id="btn-continue" class="stalker-btn primary hidden" onclick="UI.continueGame()">
+            ПРОДОЛЖИТЬ ПАРТИЮ
+        </button>
         <button class="stalker-btn primary" onclick="UI.loadBetaMap()">
             НАЧАТЬ ИГРУ (БЕТА-КАРТА)
         </button>
@@ -25,6 +27,8 @@
         <button class="stalker-btn danger" onclick="location.reload()">
             ВЫХОД
         </button>
+
+        <div id="records-list" class="records-list"></div>
 
         <div class="menu-version">
             ЗОНА ОТЧУЖДЕНИЯ · ЧЕРНОБЫЛЬ · 2006<br>
@@ -47,6 +51,9 @@
                        color:#4ade80;font-family:'Share Tech Mono',monospace;
                        font-size:10px;padding:8px;resize:none;margin-top:8px"
                 placeholder='Вставьте JSON или выберите файл...'></textarea>
+            <div id="intel-error"
+                 style="display:none;margin-top:8px;padding:8px;border:1px solid #8b1a1a;
+                        background:rgba(139,26,26,0.15);color:#f87171;font-size:10px;line-height:1.4"></div>
         </div>
         <div style="display:flex;gap:8px">
             <button class="stalker-btn" style="flex:1" onclick="UI.processIntel()">ЗАГРУЗИТЬ</button>
@@ -71,6 +78,22 @@
     </div>
 </div>
 
+<!-- ══════════════ ЭКРАН ИТОГОВ ПАРТИИ ════════════ -->
+<div id="game-over" style="display:none">
+    <div class="game-over-panel">
+        <div id="game-over-title" class="game-over-title">ПОБЕДА</div>
+        <div id="game-over-reason" class="game-over-reason"></div>
+        <div id="game-over-stats" class="game-over-stats"></div>
+        <div class="game-over-actions">
+            <button class="stalker-btn primary" onclick="location.reload()">НОВАЯ ПАРТИЯ</button>
+            <button class="stalker-btn" onclick="UI.closeGameOver()">ОСМОТРЕТЬ КАРТУ</button>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="save-file-input" style="display:none" accept=".json"
+       onchange="UI.handleSaveFile(this)">
+
 <!-- ══════════════ УВЕДОМЛЕНИЯ ═══════════════════ -->
 <div id="notification-box"></div>
 
@@ -92,9 +115,14 @@
                 <span class="val" id="val-stalkers">0</span>
             </div>
             
-            <div class="top-stat" title="Количество схронов (база ресурсов)">
+            <div class="top-stat" title="Количество схронов (увеличивают доход и лимит армии)">
                 <span class="label">🏠 Схроны</span>
                 <span class="val" id="val-caches">0</span>
+            </div>
+
+            <div class="top-stat" id="control-stat" title="Контроль Зоны. Для победы нужно удерживать большую часть карты">
+                <span class="label">🎯 Контроль</span>
+                <span class="val" id="val-control">0%</span>
             </div>
 
             <div class="top-stat" title="Валюта (RU)" style="border-color: var(--stalker-amber)">
@@ -228,6 +256,8 @@
                 
                 <button id="btn-download" class="game-btn amber"
                         style="width:100%;margin-top:16px;padding:10px;font-size:10px">💾 ЭКСПОРТ ДАННЫХ ЗОНЫ</button>
+                <button id="btn-save-export" class="game-btn blue hidden"
+                        style="width:100%;margin-top:6px;padding:10px;font-size:10px">📤 СОХРАНИТЬ ПАРТИЮ В ФАЙЛ</button>
             </div>
         </div>
     </div>
@@ -236,7 +266,8 @@
 <!-- ══════════════ СКРИПТЫ ════════════════════════ -->
 
 <!-- 1. Данные и настройки -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- JSZip лежит локально: игра работает без интернета -->
+<script src="vendor/jszip.min.js"></script>
 <script src="js/config.js"></script>
 <!-- 2. Хранилище состояния -->
 <script src="js/items.js"></script>
@@ -245,6 +276,8 @@
 <script src="js/mod-editor.js"></script>
 <!-- 4. Хранилище состояния -->
 <script src="js/state.js"></script>
+<!-- 5. Сохранения и рекорды -->
+<script src="js/save.js"></script>
 <!-- 5. Визуальные ресурсы (портреты, иконки) -->
 <script src="js/assets.js"></script>
 <!-- 6. Движок и логика -->
@@ -271,8 +304,10 @@
 
     // Б) Создаём экран загрузки для Assets
     var loadingScreen = document.createElement("div");
-    loadingScreen.style.cssText = 
-        "position:fixed;inset:0;background:#050805;z-index:9999;" +
+    loadingScreen.style.cssText =
+        "position:fixed;inset:0;z-index:9999;" +
+        "background:linear-gradient(rgba(0,0,0,0.72),rgba(0,20,5,0.88))," +
+        "url('assets/ui/loading.jpg') center/cover no-repeat #050805;" +
         "display:flex;flex-direction:column;align-items:center;justify-content:center;color:#4ade80;";
     loadingScreen.innerHTML = 
         '<div style="font-size:30px;letter-spacing:0.5em;margin-bottom:20px;animation:flicker 2s infinite">S.T.A.L.K.E.R.</div>' +

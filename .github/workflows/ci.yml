@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Аудит и дымовые тесты
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci --no-audit --no-fund
+
+      - name: Проверка синтаксиса JS
+        run: |
+          for f in $(find js tools tests -name '*.js'); do
+            node --check "$f" || exit 1
+          done
+
+      - name: Аудит проекта и дымовые тесты
+        run: npm test

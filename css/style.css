@@ -1,4 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+/* Шрифт лежит локально — без внешних CDN */
+@font-face {
+    font-family: 'Share Tech Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../assets/fonts/share-tech-mono-latin-400-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
     --stalker-green:  #4a7c4e;
@@ -29,7 +37,7 @@ body, html {
     position: fixed; inset: 0; z-index: 1000;
     background:
         linear-gradient(rgba(0,0,0,0.65) 0%, rgba(0,20,5,0.85) 100%),
-        url('https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&q=80&w=1600')
+        url('../assets/ui/background.jpg')
         center/cover no-repeat;
     display: flex;
     align-items: center;
@@ -91,6 +99,14 @@ body, html {
         rgba(0,0,0,0.07) 2px,
         rgba(0,0,0,0.07) 4px
     );
+}
+
+.menu-logo {
+    display: block;
+    margin: 0 auto 1rem;
+    width: 96px; height: 96px;
+    filter: drop-shadow(0 0 18px rgba(74, 222, 128, 0.35));
+    animation: glow-pulse 4s ease-in-out infinite;
 }
 
 .menu-title {
@@ -559,53 +575,49 @@ img[src] {
     padding-right: 28px;
 }
 
-/* ═══════════════ РЕДАКТОР МОДОВ ════════════════ */
-.mod-tab-btn {
-    background: rgba(10,20,10,0.5);
-    border: 1px solid #2a3a2a;
-    padding: 6px 14px;
-    cursor: pointer;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #6a8a6a;
-    transition: all 0.2s;
-}
-
-.mod-tab-btn.active {
-    background: rgba(74,124,78,0.3);
-    color: var(--radiation);
-    border-color: var(--stalker-green);
-}
-
-.mod-tab-btn:hover {
-    border-color: var(--stalker-green);
-    color: var(--radiation);
-}
-
-.mod-input {
-    width: 100%;
-    background: #0a120a;
-    border: 1px solid #2a3a2a;
-    color: #4ade80;
-    padding: 6px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 11px;
-}
-
-.mod-input:focus {
-    outline: none;
-    border-color: var(--stalker-green);
-    box-shadow: 0 0 8px rgba(74,222,128,0.2);
-}
-
 /* ═══════════════ АДАПТИВНОСТЬ ══════════════════ */
+@media (max-width: 1200px) {
+    #hoi-window   { width: min(560px, calc(100vw - 16px)); }
+    #intel-sidebar{ left: auto; right: 8px; width: min(270px, calc(100vw - 16px)); }
+    .faction-select-panel { width: min(520px, calc(100vw - 24px)); }
+}
+
+@media (max-width: 900px) {
+    #top-bar {
+        height: auto;
+        min-height: 44px;
+        flex-wrap: wrap;
+        padding: 6px 10px;
+        gap: 8px 12px;
+    }
+    #top-bar > div { flex-wrap: wrap; gap: 6px 10px; }
+    #top-bar > div:last-child { margin-left: 0; }
+    .top-stat { padding: 2px 8px; font-size: 10px; }
+    .faction-badge { font-size: 11px; }
+    #game-tabs { flex-wrap: wrap; right: 8px; gap: 1px; }
+    .tab-btn { padding: 4px 8px; font-size: 8px; }
+    #hoi-window { top: 92px; left: 8px; right: 8px; width: auto; }
+    #intel-sidebar { top: 92px; left: 8px; right: 8px; width: auto; }
+    .window-content { min-height: 260px; max-height: 60vh; }
+    #notification-box { width: min(320px, calc(100vw - 40px)); }
+}
+
 @media (max-width: 600px) {
     .leader-portrait {
         width: 132px !important;  /* 80% от 165 */
         height: 86px !important;  /* 80% от 108 */
     }
+    .menu-panel {
+        width: calc(100vw - 24px);
+        padding: 2rem 1.25rem;
+    }
+    .menu-title { font-size: 2rem; }
+    .menu-logo { width: 72px; height: 72px; }
+    #ui-panel { width: 260px; }
+    #ui-wrapper.hidden-panel { transform: translateX(260px); }
+    .faction-list { padding: 8px; }
+    .faction-item { padding: 8px; gap: 8px; }
+    .leader-portrait { max-width: 100%; }
 }
 
 /* ЦВЕТА ФРАКЦИЙ */
@@ -619,4 +631,140 @@ img[src] {
 .fi-military  { border-left-color: #84cc16 !important; }
 .fi-scientists{ border-left-color: #06b6d4 !important; }
 .fi-renegades { border-left-color: #78350f !important; }
+.fi-ozone     { border-left-color: #6d28d9 !important; }
 .fi-ozone     { border-left-color: #8b5cf6 !important; }
+
+/* ═══════════════ УТИЛИТЫ ══════════════════════
+   Раньше часть классов приходила из Tailwind CDN.
+   Теперь они определены локально, чтобы игра работала офлайн. */
+.hidden          { display: none !important; }
+.flex            { display: flex; }
+.gap-3           { gap: 0.75rem; }
+.mr-4            { margin-right: 1rem; }
+.w-full          { width: 100%; }
+.text-\[10px\]   { font-size: 10px; }
+.text-blue-400   { color: #60a5fa; }
+.text-green-400  { color: #4ade80; }
+.text-amber-500  { color: #f59e0b; }
+.text-yellow-500 { color: #eab308; }
+
+@keyframes util-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+.animate-pulse  { animation: util-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes util-bounce {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); }
+}
+.animate-bounce { animation: util-bounce 1.2s ease-in-out infinite; display: inline-block; }
+
+/* ═══════════════ МОБИЛЬНОЕ УПРАВЛЕНИЕ ════════ */
+/* Без touch-action браузер перехватывает жесты на скролл/зум страницы */
+#grid-canvas {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+    .game-btn, .speed-btn, .stalker-btn { min-height: 36px; }
+    .tab-btn { min-height: 40px; }
+}
+
+/* ═══════════════ ЭКРАН ИТОГОВ ПАРТИИ ═════════ */
+#game-over {
+    position: fixed; inset: 0; z-index: 3000;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, rgba(8, 20, 10, 0.92), rgba(2, 6, 2, 0.98));
+    backdrop-filter: blur(6px);
+    animation: go-fade 0.45s ease-out;
+}
+
+@keyframes go-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.game-over-panel {
+    width: min(520px, 92vw);
+    padding: 32px 28px 24px;
+    background: linear-gradient(160deg, rgba(16, 30, 18, 0.97), rgba(8, 14, 9, 0.99));
+    border: 1px solid #2a4a2a;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 24px 80px rgba(0, 0, 0, 0.8),
+                inset 0 1px 0 rgba(120, 180, 120, 0.08);
+    text-align: center;
+    animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes go-rise { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.game-over-title {
+    font-family: 'Russo One', 'Inter', system-ui, sans-serif;
+    font-size: 38px; letter-spacing: 6px; margin-bottom: 6px;
+    text-transform: uppercase;
+}
+.game-over-title.victory { color: #4ade80; text-shadow: 0 0 26px rgba(74, 222, 128, 0.55); }
+.game-over-title.defeat  { color: #ef4444; text-shadow: 0 0 26px rgba(239, 68, 68, 0.45); }
+
+.game-over-reason {
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: #6a8a6a; margin-bottom: 22px;
+}
+
+.game-over-stats {
+    border-top: 1px solid #1c2e1c; border-bottom: 1px solid #1c2e1c;
+    padding: 6px 0; margin-bottom: 22px;
+}
+.game-over-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 4px; font-size: 12px; color: #8aa88a;
+    border-bottom: 1px dashed rgba(42, 74, 42, 0.4);
+}
+.game-over-row:last-child { border-bottom: none; }
+.game-over-row b { color: #d8e8d8; font-weight: 500; letter-spacing: 1px; }
+
+.game-over-actions { display: flex; gap: 10px; }
+.game-over-actions .stalker-btn { flex: 1; margin: 0; }
+
+/* ═══════════════ РЕКОРДЫ В МЕНЮ ═══════════════ */
+.records-list { width: 100%; max-width: 380px; margin: 14px auto 0; }
+.records-list:empty { display: none; }
+
+.records-title {
+    font-size: 9px; letter-spacing: 3px; color: #4a6a4a;
+    text-transform: uppercase; margin-bottom: 8px; text-align: left;
+}
+
+.record-row {
+    display: grid; grid-template-columns: 20px 1fr auto auto; gap: 8px;
+    align-items: center; padding: 5px 8px; font-size: 11px;
+    border-left: 2px solid #2a4a2a; background: rgba(20, 34, 22, 0.5);
+    margin-bottom: 3px;
+}
+.record-row.win  { border-left-color: #4ade80; }
+.record-row.lose { border-left-color: #7f1d1d; }
+.record-place  { color: #4a6a4a; }
+.record-name   { color: #c8d8c8; text-align: left; }
+.record-days   { color: #6a8a6a; }
+.record-result { font-size: 9px; letter-spacing: 1px; }
+.record-row.win  .record-result { color: #4ade80; }
+.record-row.lose .record-result { color: #b45454; }
+
+/* Индикатор контроля в топбаре */
+#control-stat .val { font-weight: 600; }
+
+@media (max-width: 600px) {
+    .game-over-panel { padding: 24px 18px 18px; }
+    .game-over-title { font-size: 26px; letter-spacing: 3px; }
+    .game-over-actions { flex-direction: column; }
+    .record-row { font-size: 10px; grid-template-columns: 16px 1fr auto; }
+    .record-days { display: none; }
+}
+
+@keyframes go-fade-safety { to { opacity: 1; } }
+
+/* Уважаем системную настройку «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+    .animate-pulse, .animate-bounce, .menu-panel, .menu-title { animation: none !important; }
+}

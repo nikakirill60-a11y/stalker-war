@@ -16,6 +16,129 @@ var Renderer = {
         canvas.addEventListener("mousemove",   function(e) { self._onMove(e); });
         canvas.addEventListener("contextmenu", function(e) { e.preventDefault(); });
         window.addEventListener("mouseup",     function()  { self._isDown = false; });
+
+        // ── Мобильные жесты ──
+        // touch-action: none в CSS, иначе браузер отбирает жесты на скролл
+        canvas.addEventListener("touchstart",  function(e) { self._onTouchStart(e); }, { passive: false });
+        canvas.addEventListener("touchmove",   function(e) { self._onTouchMove(e); },  { passive: false });
+        canvas.addEventListener("touchend",    function(e) { self._onTouchEnd(e); },   { passive: false });
+        canvas.addEventListener("touchcancel", function(e) { self._onTouchEnd(e); },   { passive: false });
+    },
+
+    _touch: {
+        active:   false,
+        moved:    false,
+        startX:   0,
+        startY:   0,
+        lastX:    0,
+        lastY:    0,
+        pinchDist: 0,
+        longTimer: null
+    },
+
+    _onTouchStart: function(e) {
+        if (e.touches.length === 2) {
+            this._clearLongPress();
+            this._touch.pinchDist = this._pinchDistance(e.touches);
+            this._touch.active = false;
+            return;
+        }
+
+        var t = e.touches[0];
+        if (!t) return;
+        e.preventDefault();
+
+        var now = Date.now();
+        var last = this._lastTap || 0;
+
+        // Двойной тап — быстрый зум
+        if (now - last < 300) {
+            this._clearLongPress();
+            State.camera.zoom = State.camera.zoom > 1 ? 0.6 : 1;
+            this._lastTap = 0;
+            this._touch.moved = true;
+            return;
+        }
+        this._lastTap = now;
+
+        this._touch.active = true;
+        this._touch.moved  = false;
+        this._touch.startX = this._touch.lastX = t.clientX;
+        this._touch.startY = this._touch.lastY = t.clientY;
+
+        // Долгое нажатие = правая кнопка (выбор отряда / разведка)
+        var self = this;
+        this._clearLongPress();
+        this._touch.longTimer = setTimeout(function() {
+            if (self._touch.moved) return;
+            self._touch.active = false;
+            self._onDown({ clientX: self._touch.startX, clientY: self._touch.startY, button: 2 });
+            self._clearLongPress();
+        }, 500);
+    },
+
+    _onTouchMove: function(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            var dist = this._pinchDistance(e.touches);
+            if (this._touch.pinchDist) {
+                var ratio = dist / this._touch.pinchDist;
+                State.camera.zoom = Math.max(0.35, Math.min(2.5, State.camera.zoom * ratio));
+            }
+            this._touch.pinchDist = dist;
+            return;
+        }
+
+        var t = e.touches[0];
+        if (!t || !this._touch.active) return;
+        e.preventDefault();
+
+        var dx = t.clientX - this._touch.lastX;
+        var dy = t.clientY - this._touch.lastY;
+        this._touch.lastX = t.clientX;
+        this._touch.lastY = t.clientY;
+
+        if (Math.abs(t.clientX - this._touch.startX) > 8 ||
+            Math.abs(t.clientY - this._touch.startY) > 8) {
+            this._touch.moved = true;
+            this._clearLongPress();
+        }
+
+        if (this._touch.moved) {
+            if (!State.isGameMode) {
+                // в редакторе — рисуем пальцем
+                this._paint(this._key(t.clientX, t.clientY));
+            } else {
+                // в игре — панорама карты
+                State.camera.x -= dx / State.camera.zoom;
+                State.camera.y -= dy / State.camera.zoom;
+            }
+        }
+    },
+
+    _onTouchEnd: function(e) {
+        this._clearLongPress();
+
+        if (!this._touch.active) { this._touch.pinchDist = 0; return; }
+        if (this._touch.moved)   { this._touch.active = false; return; }
+
+        // Короткий тап — то же, что клик левой кнопкой
+        this._touch.active = false;
+        var t = (e.changedTouches && e.changedTouches[0]) || null;
+        if (t) this._onDown({ clientX: t.clientX, clientY: t.clientY, button: 0 });
+    },
+
+    _pinchDistance: function(touches) {
+        var dx = touches[0].clientX - touches[1].clientX;
+        var dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    },
+
+    _clearLongPress: function() {
+        if (this._touch.longTimer) {
+            clearTimeout(this._touch.longTimer);
+            this._touch.longTimer = null;
+        }
     },
 
     resize: function() {
@@ -164,10 +287,17 @@ var Renderer = {
             var x = parseInt(parts[0]);
             var y = parseInt(parts[1]);
             var last = cell.buildings[cell.buildings.length - 1];
-            ctx.font         = Math.floor(S * 0.55) + "px sans-serif";
-            ctx.textAlign    = "left";
-            ctx.textBaseline = "bottom";
-            ctx.fillText(icons[last] || "🏗", x * S + 1, y * S + S - 1);
+            var img = AssetManager.get("icons", last);
+
+            if (img && img.width) {
+                var size = S * 0.62;
+                ctx.drawImage(img, x * S + S - size - 1, y * S + S - size - 1, size, size);
+            } else {
+                ctx.font         = Math.floor(S * 0.55) + "px sans-serif";
+                ctx.textAlign    = "left";
+                ctx.textBaseline = "bottom";
+                ctx.fillText(icons[last] || "🏗", x * S + 1, y * S + S - 1);
+            }
         });
     },
 
@@ -239,12 +369,23 @@ _drawUnits: function() {
 
         // Иконка юнита
         ctx.globalAlpha = u.trainingDaysLeft > 0 ? 0.4 : 1;
-        
+
         var iconImg = AssetManager.get("icons", u.type);
-        
+
+        // Тёмная подложка + кольцо цвета фракции, иначе иконка
+        // теряется на фоне территории того же цвета.
+        var ownerColor = State.getFactionInfo(u.owner).color || "#4ade80";
+        ctx.beginPath();
+        ctx.arc(u.visualX, u.visualY, S * 0.46, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(4,10,4,0.72)";
+        ctx.fill();
+        ctx.lineWidth   = 2;
+        ctx.strokeStyle = ownerColor;
+        ctx.stroke();
+
         if (iconImg && u.trainingDaysLeft <= 0) {
             // Рисуем PNG-изображение
-            var iconSize = S * 0.8;
+            var iconSize = S * 0.72;
             ctx.drawImage(
                 iconImg,
                 u.visualX - iconSize / 2,
@@ -270,7 +411,7 @@ _drawUnits: function() {
         var by  = u.visualY + S / 2 - 4;
         ctx.fillStyle = "#300";
         ctx.fillRect(bx, by, bw, 3);
-        var pct = Math.max(0, u.hp / u.maxHp);
+        var pct = u.maxHp > 0 ? Math.max(0, Math.min(1, u.hp / u.maxHp)) : 0;
         ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.25 ? "#f59e0b" : "#ef4444");
         ctx.fillRect(bx, by, bw * pct, 3);
     });

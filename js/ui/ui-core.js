@@ -20,6 +20,16 @@ var UI = {
         if (btnPlay)  btnPlay.onclick  = function() { self.openPlayMenu(); };
         if (btnNorm)  btnNorm.onclick  = function() { self.resetMapMode(); };
 
+        var btnContinue = document.getElementById("btn-continue");
+        if (btnContinue && typeof SaveManager !== "undefined" && SaveManager.hasSave()) {
+            btnContinue.classList.remove("hidden");
+        }
+
+        var btnSaveExport = document.getElementById("btn-save-export");
+        if (btnSaveExport) btnSaveExport.onclick = function() { self.exportSave(); };
+
+        this.renderRecords();
+
         // Безопасное назначение кнопок управления скоростью времени
         var btnPause  = document.getElementById("btn-pause");
         var btnSpeed1 = document.getElementById("btn-speed-1");
@@ -53,17 +63,58 @@ var UI = {
 
     processIntel: function() {
         var raw = document.getElementById("import-area").value.trim();
-        try {
-            State.grid = raw ? JSON.parse(raw) : generateBetaMap();
-        } catch(err) {
-            alert("Ошибка JSON!");
-            return;
+        var errBox = document.getElementById("intel-error");
+        if (errBox) errBox.style.display = "none";
+        var grid;
+
+        if (!raw) {
+            grid = generateBetaMap();
+        } else {
+            try {
+                grid = JSON.parse(raw);
+            } catch (err) {
+                this._intelError("Ошибка JSON: " + err.message);
+                return;
+            }
+            if (!grid || typeof grid !== "object" || Array.isArray(grid)) {
+                this._intelError("Ожидался объект вида {\"0,0\": \"loners\"}");
+                return;
+            }
+            // Оставляем только клетки с известными фракциями
+            var valid = {}, dropped = 0;
+            Object.keys(grid).forEach(function(key) {
+                var id = grid[key];
+                if (typeof id === "string" && FACTIONS[id]) valid[key] = id;
+                else dropped++;
+            });
+            if (!Object.keys(valid).length) {
+                this._intelError("В карте нет ни одной известной фракции");
+                return;
+            }
+            if (dropped) {
+                State.createAlert("ПРОПУЩЕНО НЕИЗВЕСТНЫХ КЛЕТОК: " + dropped, 6, "war");
+            }
+            grid = valid;
         }
+
+        State.grid      = grid;
+        State.cellStats = {};   // старые данные клеток больше не актуальны
         this.showGame();
     },
 
+    _intelError: function(message) {
+        var box = document.getElementById("intel-error");
+        if (box) {
+            box.innerText = message;
+            box.style.display = "block";
+        } else {
+            State.createAlert(message, 6, "war");
+        }
+    },
+
     loadBetaMap: function() {
-        State.grid = generateBetaMap();
+        State.grid      = generateBetaMap();
+        State.cellStats = {};   // новая карта — новые данные клеток
         this.showGame();
     },
 
@@ -71,7 +122,37 @@ var UI = {
         document.getElementById("main-menu").style.display     = "none";
         document.getElementById("game-container").style.display = "block";
         Renderer.resize();
+        this.centerCameraOnMap();
         this.initEditorUI();
+    },
+
+    // Ставим камеру в центр карты и подбираем масштаб,
+    // иначе карта уезжает в правый нижний угол экрана.
+    centerCameraOnMap: function() {
+        var keys = Object.keys(State.grid);
+        if (!keys.length) return;
+
+        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        keys.forEach(function(pos) {
+            var p = pos.split(",");
+            var x = parseInt(p[0], 10), y = parseInt(p[1], 10);
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        });
+
+        var w = (maxX - minX + 1) * CELL_SIZE;
+        var h = (maxY - minY + 1) * CELL_SIZE;
+
+        State.camera.x = ((minX + maxX + 1) / 2) * CELL_SIZE;
+        State.camera.y = ((minY + maxY + 1) / 2) * CELL_SIZE;
+
+        var fit = Math.min(
+            (window.innerWidth  - 80) / Math.max(1, w),
+            (window.innerHeight - 120) / Math.max(1, h)
+        );
+        State.camera.zoom = Math.max(0.4, Math.min(4, fit));
     },
 
     // ═══════════════════════════════════════════════
@@ -115,6 +196,14 @@ var UI = {
         State.isGameMode          = true;
         State.resources.equipment = f.startEquip || 1000;
         State.resources.rubles    = 5000;
+        State.startedAt           = Date.now();
+        State.gameOver            = null;
+        State.lastStandUsed       = false;
+        State.saveDay             = 0;
+        if (typeof SaveManager !== "undefined") {
+            SaveManager.clear();
+            SaveManager.save();           // чтобы «Продолжить» работало с первого дня
+        }
         Engine.setSpeed(1);
         this.updateTopBar();
         document.getElementById("play-menu").style.display     = "none";
@@ -187,6 +276,130 @@ var UI = {
         if (ter)  ter.innerText  = stats.cells;
         if (cach) cach.innerText = stats.totalCaches;
         if (rub)  rub.innerText  = Math.floor(State.resources.rubles).toLocaleString();
+
+        // Контроль Зоны — прогресс к условию победы
+        var total = Object.keys(State.grid).length || 1;
+        var pct   = Math.round(stats.cells / total * 100);
+        var ctrl  = document.getElementById("val-control");
+        if (ctrl) {
+            ctrl.innerText = pct + "%";
+            ctrl.style.color = pct >= WIN_CONTROL_PERCENT ? "#4ade80"
+                             : (pct >= WIN_CONTROL_PERCENT / 2 ? "#c8a84b" : "#6a8a6a");
+        }
+
+        var saveBtn = document.getElementById("btn-save-export");
+        if (saveBtn) saveBtn.classList.toggle("hidden", !State.isGameMode);
+    },
+
+    // ═══════════════════════════════════════════════
+    //  ЗАВЕРШЕНИЕ ПАРТИИ
+    // ═══════════════════════════════════════════════
+
+    showGameOver: function(result) {
+        var box = document.getElementById("game-over");
+        if (!box) return;
+
+        var win = result.result === "victory";
+        var title = document.getElementById("game-over-title");
+        title.innerText = win ? "ПОБЕДА" : "ПОРАЖЕНИЕ";
+        title.className = "game-over-title " + (win ? "victory" : "defeat");
+
+        document.getElementById("game-over-reason").innerText = result.reason;
+
+        var faction = State.getFactionInfo(result.faction);
+        var rows = [
+            ["Группировка", faction.name],
+            ["Дней в Зоне", result.day],
+            ["Контроль Зоны", result.percent + "%"],
+            ["Секторов", result.cells],
+            ["Отрядов", result.units],
+            ["Войн", result.wars],
+            ["Артефактов", result.artifacts],
+            ["Группировок осталось", result.factionsLeft]
+        ];
+        document.getElementById("game-over-stats").innerHTML = rows.map(function(r) {
+            return '<div class="game-over-row"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>';
+        }).join("");
+
+        box.style.display = "flex";
+    },
+
+    closeGameOver: function() {
+        var box = document.getElementById("game-over");
+        if (box) box.style.display = "none";
+    },
+
+    // ═══════════════════════════════════════════════
+    //  СОХРАНЕНИЯ И РЕКОРДЫ
+    // ═══════════════════════════════════════════════
+
+    continueGame: function() {
+        if (!SaveManager.load()) {
+            State.createAlert("СОХРАНЕНИЕ ПОВРЕЖДЕНО", 5, "war");
+            return;
+        }
+        document.getElementById("main-menu").style.display      = "none";
+        document.getElementById("game-container").style.display = "block";
+        document.getElementById("game-tabs").classList.remove("hidden");
+        document.getElementById("ui-wrapper").classList.add("hidden-panel");
+        document.getElementById("top-faction-name").innerText =
+            State.getFactionInfo(State.myFactionId).name.toUpperCase();
+
+        Renderer.resize();
+        this.centerCameraOnMap();
+        this.initEditorUI();
+        this.updateTopBar();
+
+        State.isGameMode = true;
+        Engine.setSpeed(1);
+        State.createAlert("ПАРТИЯ ЗАГРУЖЕНА · ДЕНЬ " + State._getDaysSinceStart(), 6, "info");
+    },
+
+    exportSave: function() {
+        if (!State.isGameMode) {
+            State.createAlert("СЕЙВ ДОСТУПЕН ТОЛЬКО В ИГРЕ", 4, "war");
+            return;
+        }
+        SaveManager.exportToFile();
+        State.createAlert("ПАРТИЯ ВЫГРУЖЕНА В ФАЙЛ", 5, "info");
+    },
+
+    handleSaveFile: function(input) {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var self = this;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var res = SaveManager.importFromText(e.target.result);
+            if (!res.ok) {
+                State.createAlert("ОШИБКА ИМПОРТА: " + res.error.toUpperCase(), 8, "war");
+                return;
+            }
+            SaveManager.save();
+            self.continueGame();
+        };
+        reader.readAsText(file);
+    },
+
+    renderRecords: function() {
+        var box = document.getElementById("records-list");
+        if (!box || typeof SaveManager === "undefined") return;
+
+        var records = SaveManager.getRecords();
+        if (!records.length) { box.innerHTML = ""; return; }
+
+        var html = '<div class="records-title">ЛУЧШИЕ ПАРТИИ</div>';
+        records.slice(0, 5).forEach(function(r, i) {
+            var win  = r.result === "victory";
+            var name = FACTIONS[r.faction] ? FACTIONS[r.faction].name : r.faction;
+            html += '<div class="record-row ' + (win ? "win" : "lose") + '">' +
+                '<span class="record-place">' + (i + 1) + '</span>' +
+                '<span class="record-name">' + name + '</span>' +
+                '<span class="record-days">' + r.day + ' дн.</span>' +
+                '<span class="record-result">' + (win ? "ПОБЕДА" : "ПОРАЖЕНИЕ") + '</span>' +
+            '</div>';
+        });
+        box.innerHTML = html;
     },
 
     // ═══════════════════════════════════════════════
@@ -199,11 +412,15 @@ var UI = {
 
         var el;
         el = document.getElementById("intel-name");     if (el) el.innerText = info.name;
-        el = document.getElementById("intel-leader");   
+        el = document.getElementById("intel-leader");
         if (el) {
-            var leaders = FACTION_LEADERS[id];
-            if (leaders && leaders[0]) el.innerText = leaders[0].name;
-            else el.innerText = "Неизвестен";
+            var leaders = FACTION_LEADERS[id] || [];
+            var lead = null;
+            for (var i = 0; i < leaders.length; i++) {
+                if (leaders[i].id === (FACTIONS[id] && FACTIONS[id].defaultLeader)) lead = leaders[i];
+            }
+            if (!lead && leaders.length) lead = leaders[0];
+            el.innerText = lead ? lead.name : "Неизвестен";
         }
         el = document.getElementById("intel-ideology"); if (el) el.innerText = info.ideology;
         el = document.getElementById("cell-stalkers");  if (el) el.innerText = cell.stalkers;

@@ -39,6 +39,15 @@ var UIResearch = {
     },
 
     startResearch: function(type, level) {
+        if (!TECH_CONFIG[type] || !State.tech) return;
+        if (State.activeResearch) {
+            State.createAlert("СНАЧАЛА ЗАВЕРШИТЕ ТЕКУЩЕЕ ИССЛЕДОВАНИЕ", 3, "war");
+            return;
+        }
+        if (level !== State.tech[type] + 1) {
+            State.createAlert("ЭТОТ УРОВЕНЬ НЕДОСТУПЕН", 3, "war");
+            return;
+        }
         var bonuses = State.getLeaderBonuses();
         var speedMult = bonuses.researchSpeed || 1;
         State.activeResearch = { 
@@ -61,9 +70,9 @@ var UIResearch = {
         var constMult = bonuses.constructionSpeed || 1;
         
         if (State.buildQueue.length) {
-            var p   = State.buildQueue[0];
-            var totalDays = CONSTRUCTION_DAYS * constMult;
-            var pct = ((totalDays - p.daysLeft) / totalDays * 100).toFixed(1);
+            var p = State.buildQueue[0];
+            var totalDays = p.totalDays || (CONSTRUCTION_DAYS * constMult);
+            var pct = Math.max(0, Math.min(100, (totalDays - p.daysLeft) / totalDays * 100)).toFixed(1);
             var bd  = BUILDING_DEFS[p.type];
             active =
                 '<div style="background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.3);' +

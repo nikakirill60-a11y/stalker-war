@@ -176,6 +176,9 @@ var UIMilitary = {
                 } else {
                     html += '<div style="font-size:8px;color:#4ade80">✓ ЭКИПИРОВАНО</div>';
                 }
+                if (!isCurrent) {
+                    html += '<button onclick="UIMilitary.sellFromInventory(\'weapons\', \'' + weaponId + '\', \'' + unitId + '\')" class="game-btn amber" style="width:100%;font-size:8px;padding:3px;margin-top:3px">ПРОДАТЬ</button>';
+                }
                 
                 html += '</div>';
             });
@@ -203,6 +206,9 @@ var UIMilitary = {
                 } else {
                     html += '<div style="font-size:8px;color:#4ade80">✓ ЭКИПИРОВАНО</div>';
                 }
+                if (!isCurrent) {
+                    html += '<button onclick="UIMilitary.sellFromInventory(\'armor\', \'' + armorId + '\', \'' + unitId + '\')" class="game-btn amber" style="width:100%;font-size:8px;padding:3px;margin-top:3px">ПРОДАТЬ</button>';
+                }
                 
                 html += '</div>';
             });
@@ -221,27 +227,36 @@ var UIMilitary = {
         document.getElementById("window-title").innerText = "◈ ЭКИПИРОВКА БОЙЦА";
     },
 
+    sellFromInventory: function(slot, itemId, unitId) {
+        var bag = State.inventory && State.inventory[slot];
+        if (!bag) return;
+        var index = bag.indexOf(itemId);
+        if (index < 0) return;
+        if (!State.sellInventoryItem(slot, index)) return;
+        this.openUnitEquipment(unitId);
+    },
+
     equipFromInventory: function(unitId, itemId, itemType) {
         var unit = State.units.find(function(u) { return u.id === unitId; });
         if (!unit) return;
-        
-        // Возвращаем старый предмет в инвентарь
-        if (itemType === 'weapon' && unit.weapon) {
-            State.inventory.weapons.push(unit.weapon);
-        } else if (itemType === 'armor' && unit.armor) {
-            State.inventory.armor.push(unit.armor);
+
+        if (!State.inventory) State.inventory = { weapons: [], armor: [] };
+        var slot  = itemType === 'weapon' ? 'weapons' : 'armor';
+        var bag   = State.inventory[slot] = State.inventory[slot] || [];
+        var oldId = itemType === 'weapon' ? unit.weapon : unit.armor;
+
+        var idx = bag.indexOf(itemId);
+        if (idx === -1) {
+            State.createAlert("ПРЕДМЕТА НЕТ В ИНВЕНТАРЕ", 3, "war");
+            return;
         }
-        
-        // Экипируем новый
-        if (itemType === 'weapon') {
-            unit.weapon = itemId;
-            var idx = State.inventory.weapons.indexOf(itemId);
-            if (idx !== -1) State.inventory.weapons.splice(idx, 1);
-        } else {
-            unit.armor = itemId;
-            var idx = State.inventory.armor.indexOf(itemId);
-            if (idx !== -1) State.inventory.armor.splice(idx, 1);
-        }
+        bag.splice(idx, 1);
+
+        // Старый предмет возвращаем в инвентарь (если он не тот же самый)
+        if (oldId && oldId !== itemId) bag.push(oldId);
+
+        if (itemType === 'weapon') unit.weapon = itemId;
+        else                       unit.armor  = itemId;
         
         // Пересчёт
         State.recalculateUnitStats(unit);

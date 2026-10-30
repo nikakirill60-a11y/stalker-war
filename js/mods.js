@@ -40,8 +40,8 @@ var ModManager = {
             return;
         }
         
-        if (!file.name.endsWith('.rar') && !file.name.endsWith('.zip')) {
-            if (onError) onError("Поддерживаются только .rar и .zip архивы");
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            if (onError) onError("Поддерживаются только .zip архивы (RAR не читается браузером)");
             return;
         }
 
@@ -208,6 +208,65 @@ var ModManager = {
         return true;
     },
 
+    // ─── СНИМОК БАЗОВЫХ ДАННЫХ ───────────────────────
+    // Моды патчат глобальные объекты. Чтобы повторное применение
+    // (или удаление мода) не плодило дубликаты, держим копию оригинала.
+    _baseSnapshot: null,
+
+    _cloneData: function(value) {
+        if (Array.isArray(value)) {
+            return value.map(this._cloneData.bind(this));
+        }
+        if (value && typeof value === 'object') {
+            var out = {};
+            var self = this;
+            Object.keys(value).forEach(function(k) { out[k] = self._cloneData(value[k]); });
+            return out;
+        }
+        return value; // примитивы и функции копируем как есть
+    },
+
+    _snapshotBase: function() {
+        if (this._baseSnapshot) return;
+        this._baseSnapshot = this._cloneData({
+            FACTIONS: FACTIONS,
+            FACTION_LEADERS: FACTION_LEADERS,
+            ARTIFACTS: ARTIFACTS,
+            FACTION_FOCUSES: FACTION_FOCUSES,
+            weapons: Items.weapons,
+            armor: Items.armor,
+            traderStock: Items.traderStock
+        });
+    },
+
+    _restoreBase: function() {
+        if (!this._baseSnapshot) return;
+        var clone = this._cloneData.bind(this);
+        var restore = function(target, source) {
+            Object.keys(target).forEach(function(k) { delete target[k]; });
+            Object.keys(source).forEach(function(k) { target[k] = clone(source[k]); });
+        };
+        restore(FACTIONS, this._baseSnapshot.FACTIONS);
+        restore(FACTION_LEADERS, this._baseSnapshot.FACTION_LEADERS);
+        restore(ARTIFACTS, this._baseSnapshot.ARTIFACTS);
+        restore(FACTION_FOCUSES, this._baseSnapshot.FACTION_FOCUSES);
+        restore(Items.weapons, this._baseSnapshot.weapons);
+        restore(Items.armor, this._baseSnapshot.armor);
+        restore(Items.traderStock, this._baseSnapshot.traderStock);
+    },
+
+    // 'faction' → 'factions', 'armor' → 'armor' (не 'armors')
+    _imageCategory: function(prefix) {
+        var map = {
+            faction: 'factions',
+            leader: 'leaders',
+            weapon: 'weapons',
+            armor: 'armor',
+            artifact: 'artifacts'
+        };
+        return map[prefix] || prefix + 's';
+    },
+
     // ─── ПРИМЕНЕНИЕ ВСЕХ МОДОВ ───────────────────────
     applyMods: function() {
         // Сброс модифицированных данных
@@ -224,7 +283,12 @@ var ModManager = {
         };
 
         var self = this;
-        
+
+        // Сначала откатываем прошлые моды к базовым данным,
+        // иначе лидеры и фокусы будут дублироваться при каждом применении.
+        this._snapshotBase();
+        this._restoreBase();
+
         // Применяем каждый мод
         this.loadedMods.forEach(function(mod) {
             self.applyMod(mod);
@@ -341,7 +405,7 @@ var ModManager = {
             
             // Парсим ключ: 'faction_my_faction' -> category='factions', id='my_faction'
             var parts = key.split('_');
-            var category = parts[0] + 's'; // faction -> factions
+            var category = self._imageCategory(parts[0]);
             var id = parts.slice(1).join('_');
             
             var cacheKey = category + '/' + id;
@@ -484,7 +548,7 @@ var ModManager = {
             if (mod.images) {
                 Object.keys(mod.images).forEach(function(key) {
                     var parts = key.split('_');
-                    var category = parts[0] + 's'; // faction -> factions
+                    var category = self._imageCategory(parts[0]);
                     var id = parts.slice(1).join('_');
                     
                     // Конвертируем base64 в blob
