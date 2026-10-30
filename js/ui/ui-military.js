@@ -176,6 +176,9 @@ var UIMilitary = {
                 } else {
                     html += '<div style="font-size:8px;color:#4ade80">✓ ЭКИПИРОВАНО</div>';
                 }
+                if (!isCurrent) {
+                    html += '<button onclick="UIMilitary.sellFromInventory(\'weapons\', \'' + weaponId + '\', \'' + unitId + '\')" class="game-btn amber" style="width:100%;font-size:8px;padding:3px;margin-top:3px">ПРОДАТЬ</button>';
+                }
                 
                 html += '</div>';
             });
@@ -203,6 +206,9 @@ var UIMilitary = {
                 } else {
                     html += '<div style="font-size:8px;color:#4ade80">✓ ЭКИПИРОВАНО</div>';
                 }
+                if (!isCurrent) {
+                    html += '<button onclick="UIMilitary.sellFromInventory(\'armor\', \'' + armorId + '\', \'' + unitId + '\')" class="game-btn amber" style="width:100%;font-size:8px;padding:3px;margin-top:3px">ПРОДАТЬ</button>';
+                }
                 
                 html += '</div>';
             });
@@ -219,6 +225,15 @@ var UIMilitary = {
 
         UI.setBody(html);
         document.getElementById("window-title").innerText = "◈ ЭКИПИРОВКА БОЙЦА";
+    },
+
+    sellFromInventory: function(slot, itemId, unitId) {
+        var bag = State.inventory && State.inventory[slot];
+        if (!bag) return;
+        var index = bag.indexOf(itemId);
+        if (index < 0) return;
+        if (!State.sellInventoryItem(slot, index)) return;
+        this.openUnitEquipment(unitId);
     },
 
     equipFromInventory: function(unitId, itemId, itemType) {

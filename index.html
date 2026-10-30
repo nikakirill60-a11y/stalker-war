@@ -15,6 +15,9 @@
         <div class="menu-title">S.T.A.L.K.E.R.</div>
         <div class="menu-subtitle">Tactical Zone Control System v1.2</div>
 
+        <button id="btn-continue" class="stalker-btn primary hidden" onclick="UI.continueGame()">
+            ПРОДОЛЖИТЬ ПАРТИЮ
+        </button>
         <button class="stalker-btn primary" onclick="UI.loadBetaMap()">
             НАЧАТЬ ИГРУ (БЕТА-КАРТА)
         </button>
@@ -24,6 +27,8 @@
         <button class="stalker-btn danger" onclick="location.reload()">
             ВЫХОД
         </button>
+
+        <div id="records-list" class="records-list"></div>
 
         <div class="menu-version">
             ЗОНА ОТЧУЖДЕНИЯ · ЧЕРНОБЫЛЬ · 2006<br>
@@ -73,6 +78,22 @@
     </div>
 </div>
 
+<!-- ══════════════ ЭКРАН ИТОГОВ ПАРТИИ ════════════ -->
+<div id="game-over" style="display:none">
+    <div class="game-over-panel">
+        <div id="game-over-title" class="game-over-title">ПОБЕДА</div>
+        <div id="game-over-reason" class="game-over-reason"></div>
+        <div id="game-over-stats" class="game-over-stats"></div>
+        <div class="game-over-actions">
+            <button class="stalker-btn primary" onclick="location.reload()">НОВАЯ ПАРТИЯ</button>
+            <button class="stalker-btn" onclick="UI.closeGameOver()">ОСМОТРЕТЬ КАРТУ</button>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="save-file-input" style="display:none" accept=".json"
+       onchange="UI.handleSaveFile(this)">
+
 <!-- ══════════════ УВЕДОМЛЕНИЯ ═══════════════════ -->
 <div id="notification-box"></div>
 
@@ -94,9 +115,14 @@
                 <span class="val" id="val-stalkers">0</span>
             </div>
             
-            <div class="top-stat" title="Количество схронов (база ресурсов)">
+            <div class="top-stat" title="Количество схронов (увеличивают доход и лимит армии)">
                 <span class="label">🏠 Схроны</span>
                 <span class="val" id="val-caches">0</span>
+            </div>
+
+            <div class="top-stat" id="control-stat" title="Контроль Зоны. Для победы нужно удерживать большую часть карты">
+                <span class="label">🎯 Контроль</span>
+                <span class="val" id="val-control">0%</span>
             </div>
 
             <div class="top-stat" title="Валюта (RU)" style="border-color: var(--stalker-amber)">
@@ -230,6 +256,8 @@
                 
                 <button id="btn-download" class="game-btn amber"
                         style="width:100%;margin-top:16px;padding:10px;font-size:10px">💾 ЭКСПОРТ ДАННЫХ ЗОНЫ</button>
+                <button id="btn-save-export" class="game-btn blue hidden"
+                        style="width:100%;margin-top:6px;padding:10px;font-size:10px">📤 СОХРАНИТЬ ПАРТИЮ В ФАЙЛ</button>
             </div>
         </div>
     </div>
@@ -248,6 +276,8 @@
 <script src="js/mod-editor.js"></script>
 <!-- 4. Хранилище состояния -->
 <script src="js/state.js"></script>
+<!-- 5. Сохранения и рекорды -->
+<script src="js/save.js"></script>
 <!-- 5. Визуальные ресурсы (портреты, иконки) -->
 <script src="js/assets.js"></script>
 <!-- 6. Движок и логика -->

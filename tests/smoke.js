@@ -349,6 +349,214 @@ async function runModsPhase() {
     return errors;
 }
 
+/**
+ * Проверка новой механики: финал партии, экономика, опасность Зоны,
+ * отношения между фракциями, A* и сохранения.
+ */
+function runSystemsPhase() {
+    const h = boot();
+    const w = h.window;
+    const errors = [];
+    const check = (cond, msg) => { if (!cond) errors.push('systems → ' + msg); };
+
+    try {
+        h.ev(`
+            State.init();
+            AssetManager.init(function(){}, function(){});
+            Renderer.init(document.getElementById("grid-canvas"));
+            UI.init(); Engine.init(); UI.loadBetaMap();
+            Renderer.draw = function(){};
+            UI.updateTopBar = function(){};
+            UI.startPlay('loners');
+        `);
+    } catch (e) { errors.push('systems → загрузка упала: ' + e.message); return errors; }
+
+    const State = w.State, Engine = w.Engine;
+
+    // ── 1. A*: путь по своим землям и через врага ──
+    try {
+        const mine = Object.keys(State.grid).filter(k => State.grid[k] === 'loners');
+        check(mine.length > 0, 'у игрока нет секторов');
+        const far = mine.find(k => stripDist(k, mine[0]) > 5);
+        if (far) {
+            const path = Engine._buildPath(mine[0], far);
+            check(path.length > 0, 'A* не нашёл путь по своим клеткам');
+            check(path[path.length - 1] === far, 'A* не дошёл до цели');
+        }
+        // соседняя вражеская клетка достижима даже через войну
+        const [x, y] = mine[0].split(',').map(Number);
+        let enemyCell = null;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+            const nk = (x+dx)+','+(y+dy);
+            if (State.grid[nk] && State.grid[nk] !== 'loners') { enemyCell = nk; break; }
+        }
+        if (enemyCell) {
+            check(Engine._buildPath(mine[0], enemyCell).length > 0, 'A* не дошёл до соседней клетки');
+        }
+    } catch (e) { errors.push('systems → A* упал: ' + e.message); }
+
+    // ── 2. Отношения и войны ──
+    try {
+        check(typeof State.getRelation('duty', 'freedom') === 'number', 'нет отношений');
+        check(State.getRelation('duty', 'freedom') < 0, 'идеологические враги не враждебны');
+        check(State.getRelation('loners', 'clearnsky') > 0, 'союзные по духу фракции не дружат');
+
+        State.setRelation('duty', 'freedom', -100);
+        State.wars = [];
+        Engine._declareWar('duty', 'freedom');
+        check(State.isAtWar('duty', 'freedom'), 'война не объявилась');
+
+        Engine._makePeace('duty', 'freedom');
+        check(!State.isAtWar('duty', 'freedom'), 'мир не заключился');
+    } catch (e) { errors.push('systems → дипломатия упала: ' + e.message); }
+
+    // ── 3. Экономика: доход, содержание, лимит армии ──
+    try {
+        const rep = State.incomeReport();
+        check(rep.income > 0, 'нет дохода с секторов');
+        check(rep.limit >= 1, 'лимит армии нулевой');
+
+        // доход падает, если добавить отряд
+        const mine = Object.keys(State.grid).filter(k => State.grid[k] === 'loners');
+        State.spawnUnit(mine[0], 'loners', 'stalker');
+        const rep2 = State.incomeReport();
+        check(rep2.upkeep > rep.upkeep, 'содержание армии не растёт с отрядами');
+
+        // три дня экономики: казна должна измениться на net × 3
+        const before = State.resources.rubles;
+        State.resources.equipment = 999999;
+        for (let i = 0; i < 3; i++) Engine._tickEconomy();
+        const delta = State.resources.rubles - before;
+        check(delta !== 0, 'экономика не начисляет рубли');
+
+        // лимит армии соблюдается
+        for (let i = 0; i < 40; i++) {
+            State.spawnUnit(mine[i % mine.length], 'loners', 'stalker');
+            Engine._tickEconomy();
+        }
+        check(State.armySize('loners') <= State.maxArmySize('loners'),
+            'лимит армии не соблюдается: ' + State.armySize('loners') + ' > ' + State.maxArmySize('loners'));
+    } catch (e) { errors.push('systems → экономика упала: ' + e.message); }
+
+    // ── 4. Опасность Зоны ──
+    try {
+        // ставим отряд в аномальную клетку
+        const dangerous = Object.keys(State.grid).find(k => {
+            const d = State.getCellData(k);
+            return d.anomalies > 0 || d.radiation > h.ev('RADIATION_THRESHOLD');
+        });
+        check(!!dangerous, 'на карте нет опасных клеток');
+        if (dangerous) {
+            const u = State.units.find(x => x.owner === 'loners');
+            if (u) {
+                State.grid[dangerous] = 'loners';
+                u.pos = dangerous;
+                u.lastPos = 'нет';        // имитируем вход в клетку
+                const hpBefore = u.hp;
+                for (let i = 0; i < 10; i++) Engine._tickZoneDanger();
+                check(u.hp < hpBefore, 'аномалия не нанесла урон');
+            }
+        }
+    } catch (e) { errors.push('systems → опасность Зоны упала: ' + e.message); }
+
+    // ── 5. Артефакты дают пассивные бонусы ──
+    try {
+        State.artifacts = [];
+        const before = State.artifactBonus('income');
+        State.artifacts.push({ id: 'x', type: 'rare', rarity: 3, price: 100, name: 'тест' });
+        check(State.artifactBonus('income') > before, 'артефакт не дал бонус к доходу');
+        check(State.artifactSummary().length > 0, 'сводка бонусов пуста');
+    } catch (e) { errors.push('systems → артефакты упали: ' + e.message); }
+
+    // ── 6. Финал партии ──
+    try {
+        State.gameOver = null;
+        State.lastStandUsed = false;
+        State.idleDays = 0;
+
+        // победа по контролю
+        Object.keys(State.grid).forEach(k => { State.grid[k] = 'loners'; });
+        Engine._checkGameOver();
+        check(!!State.gameOver, 'победа по контролю не сработала');
+        check(State.gameOver && State.gameOver.result === 'victory', 'финал не победа');
+        check(!!w.SaveManager.getRecords().length, 'рекорд не сохранился');
+
+        // экран итогов открывается
+        w.UI.showGameOver(State.gameOver);
+        const box = w.document.getElementById('game-over');
+        check(box && box.style.display === 'flex', 'экран итогов не показался');
+        check(w.document.getElementById('game-over-title').textContent === 'ПОБЕДА', 'заголовок финала неверный');
+        w.UI.closeGameOver();
+        check(w.document.getElementById('game-over').style.display === 'none', 'экран итогов не закрылся');
+
+        // поражение: у игрока не осталось территории, а у соседей — полно
+        State.gameOver = null;
+        State.grid = {};
+        Object.keys(State.cellStats).forEach(() => {});
+        // раздаём клетки остальным фракциям, игроку — ничего
+        const others = h.ev('Object.keys(FACTIONS)').filter(f => f !== 'loners');
+        let i = 0;
+        for (let x = 0; x < 28; x++) {
+            for (let y = 0; y < 20; y++) {
+                State.grid[x + ',' + y] = others[i++ % others.length];
+            }
+        }
+        State.lastStandUsed = true;
+        State.lastStandUntil = 0;
+        State.gameDate = new Date(2006, 3, 1);
+        State.gameDate.setDate(State.gameDate.getDate() + 30);
+        Engine._checkGameOver();
+        check(!!State.gameOver && State.gameOver.result === 'defeat', 'поражение не сработало');
+    } catch (e) { errors.push('systems → финал упал: ' + e.message); }
+
+    // ── 7. Сохранения ──
+    try {
+        const h2 = boot();
+        h2.ev(`
+            State.init();
+            AssetManager.init(function(){}, function(){});
+            Renderer.init(document.getElementById("grid-canvas"));
+            UI.init(); Engine.init(); UI.loadBetaMap();
+            Renderer.draw = function(){}; UI.updateTopBar = function(){};
+            UI.startPlay('duty');
+        `);
+        const S2 = h2.window.State, SM = h2.window.SaveManager;
+
+        h2.window.localStorage.removeItem(SM.SAVE_KEY);
+        check(SM.save(), 'сохранение не записалось');
+        check(SM.hasSave(), 'сохранение не найдено');
+
+        const snapshot = {
+            cells: S2.calcFactionStats('duty').cells,
+            rubles: Math.floor(S2.resources.rubles),
+            rel: S2.getRelation('duty', 'freedom')
+        };
+        S2.grid = {}; S2.resources.rubles = 1; S2.relations = {};
+
+        check(SM.load(), 'загрузка не удалась');
+        check(S2.calcFactionStats('duty').cells === snapshot.cells, 'территория не восстановилась');
+        check(Math.floor(S2.resources.rubles) === snapshot.rubles, 'казна не восстановилась');
+        check(S2.getRelation('duty', 'freedom') === snapshot.rel, 'отношения не восстановились');
+
+        // экспорт/импорт
+        const text = JSON.stringify(SM.serialize());
+        check(SM.importFromText(text).ok, 'импорт своего же сохранения не удался');
+        check(!SM.importFromText('не json').ok, 'мусор принят как сохранение');
+
+        // битое сохранение не роняет игру
+        h2.window.localStorage.setItem(SM.SAVE_KEY, '{сломано');
+        check(!SM.load(), 'битое сохранение загрузилось');
+    } catch (e) { errors.push('systems → сохранения упали: ' + e.message); }
+
+    return errors;
+
+    function stripDist(a, b) {
+        const [ax, ay] = a.split(',').map(Number);
+        const [bx, by] = b.split(',').map(Number);
+        return Math.abs(ax - bx) + Math.abs(ay - by);
+    }
+}
+
 async function main() {
     const probe = boot();
     H = probe;
@@ -362,6 +570,11 @@ async function main() {
     const modErrors = await runModsPhase();
     for (const e of modErrors) {
         all.push({ fid: 'mods', errors: [e] });
+    }
+
+    const sysErrors = runSystemsPhase();
+    for (const e of sysErrors) {
+        all.push({ fid: 'systems', errors: [e] });
     }
 
     let total = 0;
@@ -383,7 +596,7 @@ async function main() {
         console.log(`   фракции: ${[...u.factions].join(', ')}\n`);
     }
     const warns = new Map();
-    for (const r of all) for (const l of r.logs) if (l[0] === 'warn') warns.set(l[1], (warns.get(l[1]) || 0) + 1);
+    for (const r of all) for (const l of (r.logs || [])) if (l[0] === 'warn') warns.set(l[1], (warns.get(l[1]) || 0) + 1);
     if (warns.size) {
         console.log('ПРЕДУПРЕЖДЕНИЯ:');
         for (const [m, c] of warns) console.log(`  ! [${c}×] ${m}`);
@@ -393,4 +606,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { runModsPhase, runFaction };
+module.exports = { runModsPhase, runFaction, runSystemsPhase };

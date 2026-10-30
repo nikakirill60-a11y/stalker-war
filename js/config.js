@@ -14,6 +14,23 @@ const PORT_RANGE         = 6;
 const AMPHIBIOUS_DAYS    = 25;
 const MAX_AI_ARMY_SIZE   = 10; // Лимит армии ИИ
 
+// ─── УСЛОВИЯ ЗАВЕРШЕНИЯ ПАРТИИ ───────────────────
+const WIN_CONTROL_PERCENT = 30;   // % Зоны для победы по контролю   // % Зоны для победы по контролю
+const LAST_STAND_DAYS     = 10;  // дней неприкосновенности после «последнего шанса»
+
+// ─── ЭКОНОМИКА ───────────────────────────────────
+const RUBLES_PER_SECTOR   = 12;  // доход с сектора в день
+const RUBLES_PER_CACHE    = 25;  // доход со схрона в день
+const RUBLES_PER_UNIT     = 3;   // содержание отряда в день
+const ARMY_BASE_LIMIT     = 10;  // лимит отрядов без схронов
+const ARMY_PER_CACHE      = 3;   // +3 к лимиту за каждый схрон
+const SELL_RATE           = 0.6; // доля цены при продаже предмета
+
+// ─── ОПАСНОСТЬ ЗОНЫ ──────────────────────────────
+const RADIATION_THRESHOLD = 60;  // с этого уровня фона юниты получают урон
+const RADIATION_DAMAGE    = 3;   // урон в день на «грязной» клетке
+const ANOMALY_DAMAGE      = 5;   // урон за проход через аномалию (× число аномалий)
+
 const MONTHS = [
     "ЯНВ","ФЕВ","МАР","АПР","МАЙ","ИЮН",
     "ИЮЛ","АВГ","СЕН","ОКТ","НОЯ","ДЕК"
@@ -1033,5 +1050,76 @@ function generateBetaMap() {
 }
 
 // Размеры бета-карты (используются камерой и миникартой)
+// ══════════════════════════════════════════════════
+//  ПАССИВНЫЕ БОНУСЫ АРТЕФАКТОВ (по типу)
+// ══════════════════════════════════════════════════
+// Артефакт в инвентаре работает постоянно: чем выше редкость, тем сильнее.
+var ARTIFACT_BONUS = {
+    electric:    { stat: "speed",      perRarity: 0.06, label: "скорость отрядов" },
+    chemical:    { stat: "radResist",  perRarity: 0.10, label: "защита от радиации" },
+    thermal:     { stat: "attack",     perRarity: 0.07, label: "урон в бою" },
+    gravity:     { stat: "defense",    perRarity: 0.08, label: "защита в бою" },
+    protective:  { stat: "hp",         perRarity: 0.09, label: "здоровье отрядов" },
+    rare:        { stat: "income",     perRarity: 0.05, label: "доход рублей" }
+};
+
+// Экономика: сколько рублей стоит единица снаряжения при обмене
+var RUBLES_PER_EQUIPMENT = 8;
+
+// ══════════════════════════════════════════════════
+//  ХАРАКТЕРЫ ФРАКЦИЙ И ИДЕОЛОГИЧЕСКИЕ ПРОТИВОРЕЧИЯ
+// ══════════════════════════════════════════════════
+// aggression  — как быстро копит вражду и объявляет войны
+// caution     — насколько держится за свои сектора
+// expansion   — как охотно шлёт юнитов вперёд
+// armyLimit   — сколько отрядов держит одновременно
+var FACTION_AI = {
+    loners:     { aggression: 0.5, caution: 0.6, expansion: 0.7, armyLimit: 8  },
+    duty:       { aggression: 0.9, caution: 0.8, expansion: 1.0, armyLimit: 12 },
+    freedom:    { aggression: 0.6, caution: 0.5, expansion: 0.8, armyLimit: 9  },
+    bandits:    { aggression: 1.0, caution: 0.3, expansion: 1.2, armyLimit: 10 },
+    monolith:   { aggression: 1.2, caution: 0.6, expansion: 1.3, armyLimit: 11 },
+    military:   { aggression: 0.9, caution: 0.9, expansion: 0.9, armyLimit: 12 },
+    scientists: { aggression: 0.2, caution: 1.2, expansion: 0.4, armyLimit: 6  },
+    clearnsky:  { aggression: 0.4, caution: 0.8, expansion: 0.5, armyLimit: 7  },
+    mercs:      { aggression: 0.8, caution: 0.4, expansion: 0.9, armyLimit: 9  },
+    renegades:  { aggression: 0.9, caution: 0.3, expansion: 1.0, armyLimit: 8  },
+    ozone:      { aggression: 0.7, caution: 0.7, expansion: 0.8, armyLimit: 10 }
+};
+
+// Пары, которые ненавидят друг друга с первого дня
+var IDEOLOGY_FOES = [
+    ['duty', 'freedom'],       // устав против вольницы
+    ['duty', 'bandits'],
+    ['freedom', 'military'],
+    ['bandits', 'loners'],
+    ['bandits', 'scientists'],
+    ['monolith', 'loners'],
+    ['monolith', 'scientists'],
+    ['monolith', 'duty'],
+    ['military', 'renegades'],
+    ['mercs', 'renegades'],
+    ['ozone', 'monolith']
+];
+
+// Пары, которые друг другу симпатизируют
+var IDEOLOGY_FRIENDS = [
+    ['loners', 'clearnsky'],
+    ['clearnsky', 'scientists'],
+    ['scientists', 'loners'],
+    ['duty', 'military'],
+    ['bandits', 'renegades'],
+    ['mercs', 'freedom']
+];
+
+// Порог отношений: ниже — война, выше — союз
+var RELATION_WAR_THRESHOLD    = -55;
+var RELATION_PEACE_THRESHOLD  = -20;
+var RELATION_ALLIANCE_THRESHOLD = 45;
+
+// Коалиция: если фракция держит больше стольких процентов карты —
+// все остальные начинают видеть в ней угрозу и сближаются против неё
+var COALITION_DOMINANCE_PERCENT = 32;
+
 var BETA_MAP_WIDTH  = 28;
 var BETA_MAP_HEIGHT = 20;

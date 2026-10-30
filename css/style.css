@@ -660,6 +660,110 @@ img[src] {
 }
 .animate-bounce { animation: util-bounce 1.2s ease-in-out infinite; display: inline-block; }
 
+/* ═══════════════ МОБИЛЬНОЕ УПРАВЛЕНИЕ ════════ */
+/* Без touch-action браузер перехватывает жесты на скролл/зум страницы */
+#grid-canvas {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+    .game-btn, .speed-btn, .stalker-btn { min-height: 36px; }
+    .tab-btn { min-height: 40px; }
+}
+
+/* ═══════════════ ЭКРАН ИТОГОВ ПАРТИИ ═════════ */
+#game-over {
+    position: fixed; inset: 0; z-index: 3000;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, rgba(8, 20, 10, 0.92), rgba(2, 6, 2, 0.98));
+    backdrop-filter: blur(6px);
+    animation: go-fade 0.45s ease-out;
+}
+
+@keyframes go-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.game-over-panel {
+    width: min(520px, 92vw);
+    padding: 32px 28px 24px;
+    background: linear-gradient(160deg, rgba(16, 30, 18, 0.97), rgba(8, 14, 9, 0.99));
+    border: 1px solid #2a4a2a;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 24px 80px rgba(0, 0, 0, 0.8),
+                inset 0 1px 0 rgba(120, 180, 120, 0.08);
+    text-align: center;
+    animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes go-rise { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.game-over-title {
+    font-family: 'Russo One', 'Inter', system-ui, sans-serif;
+    font-size: 38px; letter-spacing: 6px; margin-bottom: 6px;
+    text-transform: uppercase;
+}
+.game-over-title.victory { color: #4ade80; text-shadow: 0 0 26px rgba(74, 222, 128, 0.55); }
+.game-over-title.defeat  { color: #ef4444; text-shadow: 0 0 26px rgba(239, 68, 68, 0.45); }
+
+.game-over-reason {
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: #6a8a6a; margin-bottom: 22px;
+}
+
+.game-over-stats {
+    border-top: 1px solid #1c2e1c; border-bottom: 1px solid #1c2e1c;
+    padding: 6px 0; margin-bottom: 22px;
+}
+.game-over-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 4px; font-size: 12px; color: #8aa88a;
+    border-bottom: 1px dashed rgba(42, 74, 42, 0.4);
+}
+.game-over-row:last-child { border-bottom: none; }
+.game-over-row b { color: #d8e8d8; font-weight: 500; letter-spacing: 1px; }
+
+.game-over-actions { display: flex; gap: 10px; }
+.game-over-actions .stalker-btn { flex: 1; margin: 0; }
+
+/* ═══════════════ РЕКОРДЫ В МЕНЮ ═══════════════ */
+.records-list { width: 100%; max-width: 380px; margin: 14px auto 0; }
+.records-list:empty { display: none; }
+
+.records-title {
+    font-size: 9px; letter-spacing: 3px; color: #4a6a4a;
+    text-transform: uppercase; margin-bottom: 8px; text-align: left;
+}
+
+.record-row {
+    display: grid; grid-template-columns: 20px 1fr auto auto; gap: 8px;
+    align-items: center; padding: 5px 8px; font-size: 11px;
+    border-left: 2px solid #2a4a2a; background: rgba(20, 34, 22, 0.5);
+    margin-bottom: 3px;
+}
+.record-row.win  { border-left-color: #4ade80; }
+.record-row.lose { border-left-color: #7f1d1d; }
+.record-place  { color: #4a6a4a; }
+.record-name   { color: #c8d8c8; text-align: left; }
+.record-days   { color: #6a8a6a; }
+.record-result { font-size: 9px; letter-spacing: 1px; }
+.record-row.win  .record-result { color: #4ade80; }
+.record-row.lose .record-result { color: #b45454; }
+
+/* Индикатор контроля в топбаре */
+#control-stat .val { font-weight: 600; }
+
+@media (max-width: 600px) {
+    .game-over-panel { padding: 24px 18px 18px; }
+    .game-over-title { font-size: 26px; letter-spacing: 3px; }
+    .game-over-actions { flex-direction: column; }
+    .record-row { font-size: 10px; grid-template-columns: 16px 1fr auto; }
+    .record-days { display: none; }
+}
+
+@keyframes go-fade-safety { to { opacity: 1; } }
+
 /* Уважаем системную настройку «меньше движения» */
 @media (prefers-reduced-motion: reduce) {
     .animate-pulse, .animate-bounce, .menu-panel, .menu-title { animation: none !important; }

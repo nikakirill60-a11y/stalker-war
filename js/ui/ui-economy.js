@@ -5,11 +5,34 @@ var UIEconomy = {
     //  ТОРГОВЦЫ
     // ═══════════════════════════════════════════════
 
+    /** Сводка «откуда деньги и куда уходят» — над товарами торговца. */
+    renderIncomePanel: function() {
+        var rep = State.incomeReport();
+        var sign = rep.net >= 0 ? "+" : "";
+        var color = rep.net >= 0 ? "#4ade80" : "#ef4444";
+
+        return '<div style="margin-bottom:14px;padding:10px 12px;background:rgba(6,16,8,0.6);border:1px solid #2a3a2a">' +
+            '<div style="font-size:9px;letter-spacing:0.14em;color:#4a6a4a;text-transform:uppercase;margin-bottom:8px">ЭКОНОМИКА ГРУППИРОВКИ</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;color:#8aa88a">' +
+                '<div>Секторов: <b style="color:#d8e8d8">' + rep.cells + '</b></div>' +
+                '<div>Схронов: <b style="color:#d8e8d8">' + rep.caches + '</b></div>' +
+                '<div>Доход: <b style="color:#4ade80">+' + rep.income + ' RU</b></div>' +
+                '<div>Содержание: <b style="color:#f87171">−' + rep.upkeep + ' RU</b></div>' +
+                '<div>Отряды: <b style="color:' + (rep.army >= rep.limit ? '#f87171' : '#d8e8d8') + '">' +
+                    rep.army + ' / ' + rep.limit + '</b></div>' +
+                '<div>Итого: <b style="color:' + color + '">' + sign + rep.net + ' RU/день</b></div>' +
+            '</div>' +
+            '<div style="font-size:8px;color:#2a4a2a;margin-top:6px">Схрон даёт +' + RUBLES_PER_CACHE +
+                ' RU в день и +' + ARMY_PER_CACHE + ' к лимиту отрядов</div>' +
+        '</div>';
+    },
+
     renderTrader: function() {
         var stock = Items.getTraderStock(State.myFactionId);
         var factionInfo = State.getFactionInfo(State.myFactionId);
 
-        var html = '<div style="margin-bottom:16px;padding:12px;background:rgba(74,124,78,0.05);border:1px solid #2a3a2a;text-align:center">' +
+        var html = this.renderIncomePanel() +
+            '<div style="margin-bottom:16px;padding:12px;background:rgba(74,124,78,0.05);border:1px solid #2a3a2a;text-align:center">' +
             '<div style="font-size:13px;color:#c8a84b;margin-bottom:4px">Торговец группировки ' + factionInfo.name + '</div>' +
             '<div style="font-size:9px;color:#6a8a6a">Ваш баланс: <span style="color:#c8a84b;font-weight:bold">' + Math.floor(State.resources.rubles).toLocaleString() + ' RU</span></div>' +
         '</div>';

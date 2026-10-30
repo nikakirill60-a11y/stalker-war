@@ -20,6 +20,16 @@ var UI = {
         if (btnPlay)  btnPlay.onclick  = function() { self.openPlayMenu(); };
         if (btnNorm)  btnNorm.onclick  = function() { self.resetMapMode(); };
 
+        var btnContinue = document.getElementById("btn-continue");
+        if (btnContinue && typeof SaveManager !== "undefined" && SaveManager.hasSave()) {
+            btnContinue.classList.remove("hidden");
+        }
+
+        var btnSaveExport = document.getElementById("btn-save-export");
+        if (btnSaveExport) btnSaveExport.onclick = function() { self.exportSave(); };
+
+        this.renderRecords();
+
         // Безопасное назначение кнопок управления скоростью времени
         var btnPause  = document.getElementById("btn-pause");
         var btnSpeed1 = document.getElementById("btn-speed-1");
@@ -186,6 +196,14 @@ var UI = {
         State.isGameMode          = true;
         State.resources.equipment = f.startEquip || 1000;
         State.resources.rubles    = 5000;
+        State.startedAt           = Date.now();
+        State.gameOver            = null;
+        State.lastStandUsed       = false;
+        State.saveDay             = 0;
+        if (typeof SaveManager !== "undefined") {
+            SaveManager.clear();
+            SaveManager.save();           // чтобы «Продолжить» работало с первого дня
+        }
         Engine.setSpeed(1);
         this.updateTopBar();
         document.getElementById("play-menu").style.display     = "none";
@@ -258,6 +276,130 @@ var UI = {
         if (ter)  ter.innerText  = stats.cells;
         if (cach) cach.innerText = stats.totalCaches;
         if (rub)  rub.innerText  = Math.floor(State.resources.rubles).toLocaleString();
+
+        // Контроль Зоны — прогресс к условию победы
+        var total = Object.keys(State.grid).length || 1;
+        var pct   = Math.round(stats.cells / total * 100);
+        var ctrl  = document.getElementById("val-control");
+        if (ctrl) {
+            ctrl.innerText = pct + "%";
+            ctrl.style.color = pct >= WIN_CONTROL_PERCENT ? "#4ade80"
+                             : (pct >= WIN_CONTROL_PERCENT / 2 ? "#c8a84b" : "#6a8a6a");
+        }
+
+        var saveBtn = document.getElementById("btn-save-export");
+        if (saveBtn) saveBtn.classList.toggle("hidden", !State.isGameMode);
+    },
+
+    // ═══════════════════════════════════════════════
+    //  ЗАВЕРШЕНИЕ ПАРТИИ
+    // ═══════════════════════════════════════════════
+
+    showGameOver: function(result) {
+        var box = document.getElementById("game-over");
+        if (!box) return;
+
+        var win = result.result === "victory";
+        var title = document.getElementById("game-over-title");
+        title.innerText = win ? "ПОБЕДА" : "ПОРАЖЕНИЕ";
+        title.className = "game-over-title " + (win ? "victory" : "defeat");
+
+        document.getElementById("game-over-reason").innerText = result.reason;
+
+        var faction = State.getFactionInfo(result.faction);
+        var rows = [
+            ["Группировка", faction.name],
+            ["Дней в Зоне", result.day],
+            ["Контроль Зоны", result.percent + "%"],
+            ["Секторов", result.cells],
+            ["Отрядов", result.units],
+            ["Войн", result.wars],
+            ["Артефактов", result.artifacts],
+            ["Группировок осталось", result.factionsLeft]
+        ];
+        document.getElementById("game-over-stats").innerHTML = rows.map(function(r) {
+            return '<div class="game-over-row"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>';
+        }).join("");
+
+        box.style.display = "flex";
+    },
+
+    closeGameOver: function() {
+        var box = document.getElementById("game-over");
+        if (box) box.style.display = "none";
+    },
+
+    // ═══════════════════════════════════════════════
+    //  СОХРАНЕНИЯ И РЕКОРДЫ
+    // ═══════════════════════════════════════════════
+
+    continueGame: function() {
+        if (!SaveManager.load()) {
+            State.createAlert("СОХРАНЕНИЕ ПОВРЕЖДЕНО", 5, "war");
+            return;
+        }
+        document.getElementById("main-menu").style.display      = "none";
+        document.getElementById("game-container").style.display = "block";
+        document.getElementById("game-tabs").classList.remove("hidden");
+        document.getElementById("ui-wrapper").classList.add("hidden-panel");
+        document.getElementById("top-faction-name").innerText =
+            State.getFactionInfo(State.myFactionId).name.toUpperCase();
+
+        Renderer.resize();
+        this.centerCameraOnMap();
+        this.initEditorUI();
+        this.updateTopBar();
+
+        State.isGameMode = true;
+        Engine.setSpeed(1);
+        State.createAlert("ПАРТИЯ ЗАГРУЖЕНА · ДЕНЬ " + State._getDaysSinceStart(), 6, "info");
+    },
+
+    exportSave: function() {
+        if (!State.isGameMode) {
+            State.createAlert("СЕЙВ ДОСТУПЕН ТОЛЬКО В ИГРЕ", 4, "war");
+            return;
+        }
+        SaveManager.exportToFile();
+        State.createAlert("ПАРТИЯ ВЫГРУЖЕНА В ФАЙЛ", 5, "info");
+    },
+
+    handleSaveFile: function(input) {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var self = this;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var res = SaveManager.importFromText(e.target.result);
+            if (!res.ok) {
+                State.createAlert("ОШИБКА ИМПОРТА: " + res.error.toUpperCase(), 8, "war");
+                return;
+            }
+            SaveManager.save();
+            self.continueGame();
+        };
+        reader.readAsText(file);
+    },
+
+    renderRecords: function() {
+        var box = document.getElementById("records-list");
+        if (!box || typeof SaveManager === "undefined") return;
+
+        var records = SaveManager.getRecords();
+        if (!records.length) { box.innerHTML = ""; return; }
+
+        var html = '<div class="records-title">ЛУЧШИЕ ПАРТИИ</div>';
+        records.slice(0, 5).forEach(function(r, i) {
+            var win  = r.result === "victory";
+            var name = FACTIONS[r.faction] ? FACTIONS[r.faction].name : r.faction;
+            html += '<div class="record-row ' + (win ? "win" : "lose") + '">' +
+                '<span class="record-place">' + (i + 1) + '</span>' +
+                '<span class="record-name">' + name + '</span>' +
+                '<span class="record-days">' + r.day + ' дн.</span>' +
+                '<span class="record-result">' + (win ? "ПОБЕДА" : "ПОРАЖЕНИЕ") + '</span>' +
+            '</div>';
+        });
+        box.innerHTML = html;
     },
 
     // ═══════════════════════════════════════════════

@@ -25,6 +25,11 @@ var State = {
 
     myFactionId:   null,
     myLeaderId:    null,
+    gameOver:      null,     // {result:'victory'|'defeat', reason, day, ...}
+    lastStandUsed: false,    // «последний шанс» уже использован
+    lastStandUntil: 0,       // день, до которого действует неприкосновенность
+    saveDay:       0,        // день последнего автосейва
+    startedAt:     null,     // когда начата партия (для рекордов)
     leaderChanged: false,
     isGameMode:    false,
     gameSpeed:     0,
@@ -46,6 +51,14 @@ var State = {
         // 1. Сначала ставим дату
         this.gameDate = new Date(2006, 3, 1);
         this.artifacts = [];
+        this.gameOver       = null;
+        this.lastStandUsed  = false;
+        this.lastStandUntil = 0;
+        this.startedAt      = Date.now();
+        this.idleDays       = 0;    // сколько дней подряд у игрока нет ни отрядов, ни схронов
+        this.relations      = {};   // ключ "a|b" -> от -100 (вражда) до 100 (дружба)
+        this.warSince       = {};   // ключ "a|b" -> день начала войны
+        this._initRelations();
         // 2. Потом планируем артефакт
         this._scheduleNextArtifact();
     },
@@ -110,6 +123,45 @@ var State = {
         this.createAlert("НАЙДЕН АРТЕФАКТ: " + art.name.toUpperCase(), 10, "info");
     },
 
+    /**
+     * Продажа снаряжения из инвентаря.
+     * Торговец даёт только часть цены — SELL_RATE (60%).
+     */
+    sellInventoryItem: function(slot, index) {
+        if (!this.inventory) return false;
+        var bag = this.inventory[slot];
+        if (!bag || index < 0 || index >= bag.length) return false;
+
+        var itemId = bag[index];
+        var item = slot === "weapons" ? Items.getWeapon(itemId) : Items.getArmor(itemId);
+        if (!item) return false;
+
+        var payout = Math.round((item.price || 0) * (typeof SELL_RATE !== "undefined" ? SELL_RATE : 0.6));
+        bag.splice(index, 1);
+        this.resources.rubles += payout;
+
+        this.createAlert("ПРОДАНО: " + item.name.toUpperCase() + " +" + payout + " RU", 4, "info");
+        if (typeof UI !== "undefined" && UI.updateTopBar) UI.updateTopBar();
+        return true;
+    },
+
+    /** Сколько сейчас приносит Зона и сколько стоит армия. */
+    incomeReport: function() {
+        var stats = this.calcFactionStats(this.myFactionId);
+        var caches = stats.totalCaches || 0;
+        var army = this.armySize(this.myFactionId);
+        var incomeBonus = 1 + this.artifactBonus("income");
+        return {
+            cells: stats.cells,
+            caches: caches,
+            army: army,
+            limit: this.maxArmySize(this.myFactionId),
+            income: Math.round((stats.cells * RUBLES_PER_SECTOR + caches * RUBLES_PER_CACHE) * incomeBonus),
+            upkeep: army * RUBLES_PER_UNIT,
+            net: Math.round((stats.cells * RUBLES_PER_SECTOR + caches * RUBLES_PER_CACHE) * incomeBonus) - army * RUBLES_PER_UNIT
+        };
+    },
+
     sellArtifact: function(index) {
         if (index < 0 || index >= this.artifacts.length) return;
         var art = this.artifacts[index];
@@ -158,6 +210,80 @@ var State = {
         return leader ? leader.bonuses : {};
     },
 
+    // ═══════════════════════════════════════════════
+    //  ОТНОШЕНИЯ МЕЖДУ ФРАКЦИЯМИ
+    // ═══════════════════════════════════════════════
+
+    _pairKey: function(a, b) {
+        return a < b ? a + "|" + b : b + "|" + a;
+    },
+
+    /** Стартовые отношения: идеологические враги в минусе, друзья в плюсе. */
+    _initRelations: function() {
+        if (typeof FACTIONS === "undefined") return;
+        this.relations = {};
+        this.warSince  = {};
+
+        var ids = Object.keys(FACTIONS);
+        var self = this;
+        ids.forEach(function(a) {
+            ids.forEach(function(b) {
+                if (a >= b) return;
+                self.relations[self._pairKey(a, b)] = 0;
+            });
+        });
+
+        var foes = (typeof IDEOLOGY_FOES !== "undefined") ? IDEOLOGY_FOES : [];
+        foes.forEach(function(p) { self.relations[self._pairKey(p[0], p[1])] = -45; });
+
+        var friends = (typeof IDEOLOGY_FRIENDS !== "undefined") ? IDEOLOGY_FRIENDS : [];
+        friends.forEach(function(p) { self.relations[self._pairKey(p[0], p[1])] = 30; });
+    },
+
+    getRelation: function(a, b) {
+        if (a === b) return 100;
+        if (!this.relations) return 0;
+        var v = this.relations[this._pairKey(a, b)];
+        return v === undefined ? 0 : v;
+    },
+
+    setRelation: function(a, b, value) {
+        if (a === b) return;
+        if (!this.relations) this.relations = {};
+        this.relations[this._pairKey(a, b)] = Math.max(-100, Math.min(100, value));
+    },
+
+    changeRelation: function(a, b, delta) {
+        this.setRelation(a, b, this.getRelation(a, b) + delta);
+    },
+
+    /** Сколько секторов у фракции — доля от всей карты в процентах. */
+    factionShare: function(fid) {
+        var total = Object.keys(this.grid).length || 1;
+        return this.calcFactionStats(fid).cells / total * 100;
+    },
+
+    /** Общая длина границы между фракциями — источник трения. */
+    borderLength: function(a, b) {
+        var self = this;
+        var count = 0;
+        var seen = {};
+        Object.keys(this.grid).forEach(function(k) {
+            if (self.grid[k] !== a) return;
+            var p = k.split(",");
+            var x = parseInt(p[0], 10), y = parseInt(p[1], 10);
+            for (var dx = -1; dx <= 1; dx++) {
+                for (var dy = -1; dy <= 1; dy++) {
+                    if (!dx && !dy) continue;
+                    var nk = (x + dx) + "," + (y + dy);
+                    if (seen[nk]) continue;
+                    if (self.grid[nk] === b) { seen[nk] = 1; count++; }
+                }
+            }
+        });
+        return count;
+    },
+
     isAtWar: function(a, b) {
         return this.wars.some(function(w) {
             return (w.a === a && w.b === b) || (w.b === a && w.a === b);
@@ -167,6 +293,42 @@ var State = {
     areAllies: function(a, b) {
         if (a === b) return true;
         return this.alliances.some(function(s) { return s.has(a) && s.has(b); });
+    },
+
+    // ═══════════════════════════════════════════════
+    //  ПАССИВНЫЕ БОНУСЫ АРТЕФАКТОВ
+    // ═══════════════════════════════════════════════
+
+    /** Суммарный бонус по типу артефакта: редкость × коэффициент. */
+    artifactBonus: function(stat) {
+        if (typeof ARTIFACT_BONUS === "undefined" || !this.artifacts) return 0;
+        var total = 0;
+        var self = this;
+        Object.keys(ARTIFACT_BONUS).forEach(function(type) {
+            var def = ARTIFACT_BONUS[type];
+            if (def.stat !== stat) return;
+            self.artifacts.forEach(function(a) {
+                if (a.type === type) total += def.perRarity * (a.rarity || 1);
+            });
+        });
+        return total;
+    },
+
+    /** Короткая сводка «что дают артефакты» — для панели инвентаря. */
+    artifactSummary: function() {
+        if (typeof ARTIFACT_BONUS === "undefined") return [];
+        var out = [];
+        var seen = {};
+        var self = this;
+        Object.keys(ARTIFACT_BONUS).forEach(function(type) {
+            var def = ARTIFACT_BONUS[type];
+            if (seen[def.stat]) return;
+            var val = self.artifactBonus(def.stat);
+            if (val <= 0) return;
+            seen[def.stat] = 1;
+            out.push({ stat: def.stat, label: def.label, value: Math.round(val * 100) });
+        });
+        return out;
     },
 
     calcFactionStats: function(fid) {
@@ -179,6 +341,68 @@ var State = {
             d.buildings.forEach(function(b) { if (b === "cache") totalCaches++; });
         });
         return { cells: cells, totalCaches: totalCaches };
+    },
+
+    // ─── ЛИМИТ АРМИИ ─────────────────────────────
+    // Схроны (идея «схроны как экономические точки») расширяют армию
+    maxArmySize: function(fid) {
+        if (fid !== this.myFactionId) return MAX_AI_ARMY_SIZE;
+        var stats = this.calcFactionStats(fid);
+        var limit = ARMY_BASE_LIMIT + (stats.totalCaches || 0) * ARMY_PER_CACHE;
+        // Технология выживания тоже расширяет лимит
+        limit += Math.max(0, (this.tech.survival || 1) - 1) * 2;
+        return limit;
+    },
+
+    armySize: function(fid) {
+        var n = 0;
+        this.units.forEach(function(u) { if (u.owner === fid) n++; });
+        return n;
+    },
+
+    // ─── «ПОСЛЕДНИЙ ШАНС» ────────────────────────
+    // Если игрок потерял все сектора впервые — он получает один сектор
+    // у самой слабой фракции и 10 дней неприкосновенности.
+    grantLastStand: function() {
+        if (this.lastStandUsed) return false;
+        var self = this;
+        var counts = {};
+        Object.keys(this.grid).forEach(function(k) {
+            var f = self.grid[k];
+            counts[f] = (counts[f] || 0) + 1;
+        });
+
+        var target = null, best = Infinity;
+        Object.keys(counts).forEach(function(f) {
+            if (f === self.myFactionId) return;
+            if (counts[f] < best) { best = counts[f]; target = f; }
+        });
+        if (!target) return false;
+
+        var cell = Object.keys(this.grid).filter(function(k) { return self.grid[k] === target; })[0];
+        if (!cell) return false;
+
+        this.grid[cell] = this.myFactionId;
+        this.lastStandUsed  = true;
+        this.lastStandUntil = this._getDaysSinceStart() + LAST_STAND_DAYS;
+
+        // Возвращаем фракции шанс: три отряда на отбитом секторе
+        this.spawnUnit(cell, this.myFactionId, 'stalker');
+        this.spawnUnit(cell, this.myFactionId, 'soldier');
+        this.spawnUnit(cell, this.myFactionId, 'stalker');
+
+        this.createAlert(
+            'ПОСЛЕДНИЙ ШАНС: ОТБИТ СЕКТОР У ' + this.getFactionInfo(target).name.toUpperCase() +
+            '. ' + LAST_STAND_DAYS + ' ДНЕЙ НА ВОССТАНОВЛЕНИЕ', 15, 'war'
+        );
+        return true;
+    },
+
+    // Действует ли неприкосновенность (ИИ не атакует игрока)
+    isProtected: function(fid) {
+        if (fid !== this.myFactionId) return false;
+        if (!this.lastStandUsed) return false;
+        return this._getDaysSinceStart() < this.lastStandUntil;
     },
 
     // ─── СПАУН ЮНИТОВ С ЭКИПИРОВКОЙ ────────────
